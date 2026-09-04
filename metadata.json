@@ -1,0 +1,6 @@
+{
+  "name": "Travel AI Hà Giang",
+  "description": "Trợ lý du lịch và khám phá Hà Giang ứng dụng AI thông minh, hỗ trợ lập lịch trình, bản đồ đường đèo tương tác, dự báo thời tiết và cẩm nang phượt cao nguyên đá.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
