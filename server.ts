@@ -1,230 +1,207 @@
 import express, { Request, Response } from "express";
+import cookieParser from "cookie-parser";
 import path from "path";
+import http from "http";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
-import dotenv from "dotenv";
-
-dotenv.config();
+import {
+  browsableUrl,
+  config,
+  hasGeminiCredentials,
+  hasGoogleCredentials,
+} from "./server/config";
+import { isDatabaseReachable } from "./server/db";
+import { asyncRoute } from "./server/asyncHandler";
+import { AiUnavailableError, respondAiUnavailable } from "./server/gemini";
+import { ItineraryGenerationError, generateItinerary } from "./server/itineraryCore";
+import { authRouter } from "./server/routes/auth";
+import { chatRouter } from "./server/routes/chat";
+import { contentRouter } from "./server/routes/content";
+import { meRouter } from "./server/routes/me";
+import { BUDGET_LEVELS, TRAVEL_MODES, VIBES, type ItineraryRequest } from "./server/prompts";
 
 const app = express();
-const PORT = 3000;
 
 app.use(express.json({ limit: "5mb" }));
+// Session nằm trong cookie httpOnly nên phải đọc được cookie trước mọi route.
+app.use(cookieParser());
 
-// Lazy initialize Gemini client
-let aiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI | null {
-  if (!aiClient && process.env.GEMINI_API_KEY) {
-    aiClient = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
+/**
+ * Health check. Trả riêng trạng thái database và Gemini để khi ứng dụng trông như bị hỏng,
+ * ta biết ngay nguyên nhân nằm ở đâu thay vì phải đoán.
+ */
+app.get(
+  "/api/health",
+  asyncRoute(async (_req: Request, res: Response) => {
+    const aiConfigured = hasGeminiCredentials();
+    res.json({
+      status: "ok",
+      dbConnected: await isDatabaseReachable(),
+      aiConfigured,
+      model: aiConfigured ? config.geminiModel : null,
+      timestamp: new Date().toISOString(),
     });
-  }
-  return aiClient;
-}
+  }),
+);
 
-// Health check endpoint
-app.get("/api/health", (_req: Request, res: Response) => {
+/**
+ * Cấu hình công khai cho client. Client ID của Google vốn không phải bí mật, nên gửi qua đây
+ * thay vì khai thêm một biến VITE_* thứ hai chứa cùng giá trị. Trả null thì nút đăng nhập
+ * Google tự ẩn — không để người dùng bấm vào một nút chắc chắn lỗi.
+ */
+app.get("/api/config", (_req: Request, res: Response) => {
   res.json({
-    status: "ok",
-    hasApiKey: !!process.env.GEMINI_API_KEY,
-    timestamp: new Date().toISOString()
+    googleClientId: hasGoogleCredentials() ? config.googleClientId : null,
   });
 });
 
-// AI Concierge Chat Endpoint
-app.post("/api/chat", async (req: Request, res: Response) => {
-  const { message, conversationHistory = [] } = req.body;
+// Router phải mount TRƯỚC error handler của /api ở dưới, nếu không lỗi từ chúng sẽ lọt qua
+// và Express trả về trang HTML mặc định thay vì JSON.
+app.use("/api/auth", authRouter);
+app.use("/api/me", meRouter);
+app.use("/api/content", contentRouter);
+app.use("/api/chat", chatRouter);
 
-  if (!message) {
-    return res.status(400).json({ error: "Tin nhắn không được để trống" });
+const MIN_TRIP_DAYS = 1;
+const MAX_TRIP_DAYS = 14;
+
+interface ParseResult {
+  value?: ItineraryRequest;
+  error?: string;
+}
+
+function parseItineraryRequest(body: any): ParseResult {
+  const days = Number(body?.days);
+  if (!Number.isInteger(days) || days < MIN_TRIP_DAYS || days > MAX_TRIP_DAYS) {
+    return { error: `Số ngày phải là số nguyên từ ${MIN_TRIP_DAYS} đến ${MAX_TRIP_DAYS}` };
   }
 
-  const systemPrompt = `Bạn là Trợ Lý Du Lịch Cao Cấp & Thổ Địa Hà Giang (Hà Giang AI Master Guide & Concierge) thuộc hệ thống "Cinematic Highlands".
-Phong cách của bạn: Nhiệt thành, am hiểu sâu sắc từng khúc cua, con đèo, bản làng, con người H'Mông, Dao, Tày, Lô Lô và ẩm thực cao nguyên đá Đồng Văn - Hà Giang.
-Giọng điệu: Tinh tế, ấm áp, văn phong giàu hình ảnh, nhấn mạnh an toàn giao thông đường đèo và tôn trọng văn hoá bản địa sâu sắc.
+  const travelMode = body?.travelMode;
+  if (!TRAVEL_MODES.includes(travelMode)) {
+    return { error: `Phương tiện không hợp lệ (chọn: ${TRAVEL_MODES.join(", ")})` };
+  }
 
-Kiến thức trọng tâm bạn luôn nắm vững:
-1. Địa hình & An toàn đường đèo:
-   - Các con đèo hiểm trở: Đèo Mã Pí Lèng, Dốc Thẩm Mã (9 khoanh), Dốc Bắc Sum, Dốc Chữ M (Mậu Duệ), Đèo Gió, Dốc Kéo Co.
-   - Nguyên tắc sống còn phượt đèo: "Lên số nào xuống số đó" (số 1, số 2), tuyệt đối không tắt máy thả trôi xe, không bóp phanh liên tục gây cháy bố thắng, nhường đường xe tải chở đá ở góc cua mù.
-2. Điểm đến không thể bỏ lỡ:
-   - Hẻm Tu Sản & Sông Nho Quế (Bến thuyền Tà Làng, ngắm vách đá sâu 800m).
-   - Cột cờ Lũng Cú & Làng cổ Lô Lô Chải (nhà trình tường đất sét, quán Cà phê Cực Bắc).
-   - Phố cổ Đồng Văn, Dinh thự Vua Mèo Vương Chính Đức tại Sà Phìn.
-   - Cổng Trời Quản Bạ, Núi Đôi Cô Tiên.
-   - Thác Ba Tiên Du Già và cung đèo Mậu Duệ hoang sơ.
-3. Ẩm thực trứ danh: Bánh tam giác mạch nướng, Thắng cố ngựa nguyên bản chợ phiên, Cháo ấu tẩu giải cảm đêm, Phở Tráng Kìm tráng tay dẻo thơm, Rượu ngô men lá Hà Giang, Thịt trâu/lợn gác bếp mắc khén.
-4. Mùa du lịch:
-   - Tháng 9 - 10: Mùa lúa chín vàng Hoàng Su Phì & thung lũng.
-   - Tháng 10 - 12: Mùa hoa tam giác mạch phủ hồng cao nguyên đá.
-   - Tháng 12 - 2: Mùa săn mây, hoa đào, hoa lê, hoa mận nở rộ đón xuân.
-   - Tháng 5 - 6: Mùa nước đổ lấp lánh như gương trời.
+  const vibe = body?.vibe;
+  if (!VIBES.includes(vibe)) {
+    return { error: `Phong cách không hợp lệ (chọn: ${VIBES.join(", ")})` };
+  }
 
-Hãy trả lời bằng tiếng Việt gãy gọn, có cấu trúc bullet point rõ ràng, đưa ra các mẹo thực chiến (Pro Tips) hữu ích và gợi ý câu hỏi tiếp theo cho du khách.`;
+  const budget = body?.budget;
+  if (!BUDGET_LEVELS.includes(budget)) {
+    return { error: `Mức ngân sách không hợp lệ (chọn: ${BUDGET_LEVELS.join(", ")})` };
+  }
 
-  const ai = getGeminiClient();
+  const notes = typeof body?.notes === "string" ? body.notes.trim().slice(0, 1000) : "";
 
-  if (!ai) {
-    // Elegant fallback response when API key is not yet set
-    const fallbackResponses: Record<string, string> = {
-      default: `Chào bạn! Tôi là Trợ Lý AI Hà Giang của Cinematic Highlands.
+  return { value: { days, travelMode, vibe, budget, notes } };
+}
 
-Cao nguyên đá Hà Giang mùa này sở hữu vẻ đẹp tráng lệ với không khí mát lành và mây vờn đỉnh núi. Để chuyến đi trọn vẹn nhất, bạn nên lưu ý:
-- **Cung đường đẹp nhất**: Vòng cung Hà Giang -> Quản Bạ -> Yên Minh -> Đồng Văn -> Lũng Cú -> Mã Pí Lèng -> Mèo Vạc -> Du Già (350km).
-- **Lưu ý an toàn số 1**: Hãy dùng xe số hoặc côn tay (Wave 110, Blade, XR150), đi số 2 khi đổ dốc dài, bật đèn pha khi qua khúc cua sương mù.
-- **Điểm ngắm hoàng hôn**: Đỉnh Mã Pí Lèng hoặc mỏm đá Panorama lúc 17h00.
-
-Bạn muốn tôi tư vấn cụ thể về **lịch trình theo ngày**, **kinh nghiệm thuê xe máy**, hay **thời tiết đèo hôm nay**?`
-    };
-
-    return res.json({
-      reply: fallbackResponses.default,
-      suggestions: [
-        "Lập lịch trình phượt 3N2Đ chi tiết",
-        "Tình trạng thời tiết đèo Mã Pí Lèng hôm nay",
-        "Thuê xe máy loại nào tốt nhất ở TP Hà Giang?",
-        "Top homestay view đẹp ở Lô Lô Chải và Pả Vi"
-      ]
-    });
+// AI Itinerary Generator Endpoint. Lõi sinh lịch trình nằm ở server/itineraryCore.ts và được
+// dùng chung với tác tử itinerary trong luồng hội thoại, để hai đường vào không trả về hai kết
+// quả khác nhau cho cùng một yêu cầu.
+app.post("/api/plan-itinerary", async (req: Request, res: Response) => {
+  const parsedRequest = parseItineraryRequest(req.body);
+  if (!parsedRequest.value) {
+    return res.status(400).json({ error: parsedRequest.error ?? "Yêu cầu không hợp lệ" });
   }
 
   try {
-    const chat = ai.chats.create({
-      model: "gemini-3.7-flash",
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.7,
-      }
-    });
+    const { plan } = await generateItinerary(parsedRequest.value);
+    return res.json(plan);
+  } catch (error: any) {
+    if (error instanceof AiUnavailableError) return respondAiUnavailable(res);
 
-    // Provide context from conversation history
-    for (const hist of conversationHistory.slice(-4)) {
-      if (hist.role === 'user') {
-        await chat.sendMessage({ message: hist.content });
-      }
+    if (error instanceof ItineraryGenerationError) {
+      return res.status(502).json({
+        error: error.message,
+        details: "Bạn vui lòng thử lại, hoặc điều chỉnh phần ghi chú thêm.",
+      });
     }
 
-    const response = await chat.sendMessage({ message: message });
-    const replyText = response.text || "Rất tiếc, tôi chưa thể xử lý câu trả lời lúc này. Bạn vui lòng thử lại nhé!";
-
-    return res.json({
-      reply: replyText,
-      suggestions: [
-        "Tư vấn địa điểm ăn uống ngon ở Đồng Văn",
-        "Cách đi xuống bến thuyền Sông Nho Quế an toàn",
-        "Checklist đồ bảo hộ cần chuẩn bị trước chuyến đi",
-        "Có nên tự lái xe máy phượt một mình không?"
-      ]
-    });
-  } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    return res.status(500).json({
-      error: "Không thể kết nối đến máy chủ AI",
-      details: error.message || "Vui lòng thử lại sau giây lát."
+    console.error("Gemini itinerary error:", error);
+    return res.status(502).json({
+      error: "Không thể tạo lịch trình",
+      details: error?.message ?? "Vui lòng thử lại sau giây lát.",
     });
   }
 });
 
-// AI Itinerary Generator Endpoint
-app.post("/api/plan-itinerary", async (req: Request, res: Response) => {
-  const { days = 3, travelMode = "motorbike", vibe = "photography", budget = "comfort", notes = "" } = req.body;
-  const ai = getGeminiClient();
+/**
+ * Mọi lỗi dưới /api phải trả về JSON. Nếu không có handler này, body JSON sai
+ * cú pháp sẽ khiến Express trả về trang HTML mặc định và client không đọc được
+ * thông báo lỗi.
+ */
+app.use("/api", (err: any, _req: Request, res: Response, _next: express.NextFunction) => {
+  const isBadJson = err?.type === "entity.parse.failed";
+  const status = isBadJson ? 400 : (err?.status ?? 500);
 
-  if (!ai) {
-    // Return structured preset
-    return res.json({
-      title: `Lịch Trình Hà Giang ${days}N${days - 1}Đ Tối Ưu Tinh Hoa`,
-      overview: `Hành trình khám phá trọn vẹn vòng cung cao nguyên đá Hà Giang với phong cách ${vibe}, di chuyển bằng ${travelMode}. Lịch trình được căn chỉnh khoảng cách và thời gian lái xe để đảm bảo an toàn tuyệt đối trước khi trời tối.`,
-      status: "preset"
-    });
-  }
+  if (!isBadJson) console.error("Unhandled API error:", err);
 
-  try {
-    const prompt = `Hãy đóng vai chuyên gia thổ địa Hà Giang, lập một lịch trình chi tiết và tinh tế cho chuyến đi ${days} ngày ${days - 1} đêm tại Hà Giang.
-Phương tiện: ${travelMode}
-Phong cách: ${vibe}
-Mức ngân sách: ${budget}
-Ghi chú thêm: ${notes || "Không có"}
+  /**
+   * Ở production không gửi `details` ra ngoài. Lỗi của Prisma chứa đường dẫn file trên máy
+   * chủ, tên bảng và địa chỉ database — hữu ích khi dev, nhưng là thông tin rò rỉ khi lên
+   * production. Nội dung đầy đủ vẫn nằm trong log server ở dòng trên.
+   */
+  const exposeDetails = !config.isProduction || isBadJson;
 
-Yêu cầu output JSON duy nhất theo schema:
-{
-  "title": "Tên lịch trình hấp dẫn",
-  "overview": "Mô tả tổng quan về cung đường và trải nghiệm cốt lõi (khoảng 3 câu)",
-  "totalKm": 350,
-  "dailyTips": ["mẹo 1", "mẹo 2", "mẹo 3"],
-  "days": [
-    {
-      "day": 1,
-      "title": "Tiêu đề chặng ngày",
-      "theme": "Chủ đề trải nghiệm",
-      "startPoint": "Điểm xuất phát",
-      "endPoint": "Điểm dừng chân nghỉ đêm",
-      "totalDistanceKm": 130,
-      "ridingHours": 4,
-      "maxElevationM": 1500,
-      "weatherAlert": "Lưu ý thời tiết",
-      "eveningStay": {
-        "name": "Tên homestay hoặc khu lưu trú",
-        "type": "Loại phòng/vibe",
-        "vibe": "Không khí",
-        "priceEstimate": "Mức giá dự kiến"
-      },
-      "waypoints": [
-        {
-          "time": "08:00",
-          "title": "Tên điểm dừng",
-          "subtitle": "Hoạt động chính",
-          "distanceKm": 45,
-          "elevationM": 1200,
-          "type": "ride",
-          "highlight": "Điểm nhấn nổi bật",
-          "aiTip": "Lời khuyên thổ địa thông minh"
-        }
-      ]
-    }
-  ]
-}`;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        temperature: 0.6,
-      }
-    });
-
-    const parsed = JSON.parse(response.text || "{}");
-    return res.json(parsed);
-  } catch (error: any) {
-    console.error("AI Itinerary Generation Error:", error);
-    return res.status(500).json({ error: "Lỗi tạo lịch trình", details: error.message });
-  }
+  res.status(status).json({
+    error: isBadJson ? "Nội dung yêu cầu không phải JSON hợp lệ" : "Lỗi máy chủ",
+    details: exposeDetails ? (err?.message ?? undefined) : undefined,
+  });
 });
 
 async function startServer() {
+  /**
+   * Tự dựng http server thay vì app.listen(): chế độ dev cần đưa chính server này cho Vite làm
+   * kênh HMR (xem bên dưới), còn app.listen() thì không trả ra đối tượng đó trước khi lắng nghe.
+   */
+  const httpServer = http.createServer(app);
+
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (!config.isProduction) {
+    /**
+     * HMR đi chung cổng với ứng dụng, qua nâng cấp WebSocket trên chính httpServer.
+     *
+     * Ở chế độ middleware, mặc định Vite mở một WebSocket server RIÊNG ở cổng 24678 cố định —
+     * không đổi theo PORT. Chạy hai instance dev cùng lúc, hoặc còn sót một tiến trình dev cũ,
+     * thì instance sau báo "WebSocket server error: Port 24678 is already in use" rồi VẪN khởi
+     * động bình thường: trang tải được nhưng HMR chết, sửa file không thấy cập nhật và cũng
+     * không có lỗi nào ở màn hình. Dùng chung cổng thì cổng nào chạy được app, cổng đó chạy HMR.
+     *
+     * DISABLE_HMR vẫn có hiệu lực: cờ đó tắt HMR trong vite.config.ts, nên chỉ nối kênh khi nó
+     * không được bật — nếu không, cấu hình nội tuyến này sẽ ghi đè và bật lại HMR.
+     */
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        ...(process.env.DISABLE_HMR === "true" ? {} : { hmr: { server: httpServer } }),
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    /**
+     * Chỉ phục vụ dist/client. Bản build server (dist/server.cjs) và sourcemap của nó nằm
+     * cùng nhánh dist; trỏ express.static vào cả dist sẽ công khai luôn mã nguồn server.
+     */
+    const distPath = path.join(process.cwd(), "dist", "client");
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Cinematic Highlands Server running on http://0.0.0.0:${PORT}`);
+  httpServer.listen(config.port, config.host, () => {
+    console.log(`Cinematic Highlands Server running on ${browsableUrl()}`);
+    if (!hasGeminiCredentials()) {
+      console.warn(
+        "⚠  GEMINI_API_KEY chưa được thiết lập — các endpoint AI sẽ trả về HTTP 503.",
+      );
+    }
+    // Một điểm cuối AI bị đổi âm thầm là thứ rất khó truy khi câu trả lời trở nên lạ, nên nó
+    // được in ra lúc khởi động thay vì chỉ nằm trong .env.
+    if (config.geminiBaseUrl) {
+      console.log(`Gemini đi qua điểm cuối tuỳ chỉnh: ${config.geminiBaseUrl}`);
+    }
   });
 }
 
