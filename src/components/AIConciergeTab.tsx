@@ -1,20 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage } from '../types';
-import { 
-  Sparkles, Send, Bot, User, RefreshCw, Compass, 
-  MapPin, ShieldAlert, Coffee, MessageSquare, Copy, Check
-} from 'lucide-react';
+import { Sparkles, Send, User, RefreshCw, Copy, Check, LifeBuoy, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { MarkdownMessage } from './MarkdownMessage';
+import { useChatSession } from '../hooks/useChatSession';
 
-interface AIConciergeTabProps {
-  initialPrompt?: string;
-}
-
-export const AIConciergeTab: React.FC<AIConciergeTabProps> = ({ initialPrompt = '' }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'msg-0',
-      role: 'assistant',
-      content: `Xin chào quý khách! Tôi là **Trợ Lý Thổ Địa AI Hà Giang** của hệ thống Travel AI Hà Giang.
+/**
+ * Lời chào mở đầu. Là hằng số ngoài component để nó không đổi tham chiếu giữa các lần render —
+ * useChatSession giữ nó làm tin nhắn đầu tiên khi khôi phục lịch sử.
+ */
+const GREETING: ChatMessage = {
+  id: 'msg-0',
+  role: 'assistant',
+  content: `Xin chào quý khách! Tôi là **Trợ Lý Thổ Địa AI Hà Giang** của hệ thống Travel AI Hà Giang.
 
 Tôi có thể hỗ trợ bạn 24/7 về:
 - **Tình trạng đèo & an toàn lái xe**: Cập nhật dốc Mã Pí Lèng, Dốc Thẩm Mã, sương mù Bắc Sum.
@@ -23,18 +20,24 @@ Tôi có thể hỗ trợ bạn 24/7 về:
 - **Văn hoá & Ẩm thực**: Phong tục các bản người Mông, Dao, Lô Lô và các món đặc sản chuẩn vị.
 
 Bạn muốn bắt đầu khám phá điều gì ngay bây giờ?`,
-      timestamp: 'Vừa xong',
-      suggestions: [
-        'Kinh nghiệm lái xe qua đèo Mã Pí Lèng an toàn',
-        'Nên đi xe máy số hay tay ga khi phượt Hà Giang?',
-        'Thời tiết các đỉnh đèo hôm nay thế nào?',
-        'Top 5 món đặc sản không thể bỏ qua ở Đồng Văn'
-      ]
-    }
-  ]);
+  timestamp: 'Vừa xong',
+  suggestions: [
+    'Kinh nghiệm lái xe qua đèo Mã Pí Lèng an toàn',
+    'Nên đi xe máy số hay tay ga khi phượt Hà Giang?',
+    'Thời tiết các đỉnh đèo hôm nay thế nào?',
+    'Top 5 món đặc sản không thể bỏ qua ở Đồng Văn'
+  ]
+};
+
+interface AIConciergeTabProps {
+  initialPrompt?: string;
+}
+
+export const AIConciergeTab: React.FC<AIConciergeTabProps> = ({ initialPrompt = '' }) => {
+  const { messages, isLoading, isRestoring, escalated, satisfaction, send, rate } =
+    useChatSession(GREETING);
 
   const [inputPrompt, setInputPrompt] = useState<string>(initialPrompt);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -42,57 +45,11 @@ Bạn muốn bắt đầu khám phá điều gì ngay bây giờ?`,
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  const handleSendMessage = async (textToSend?: string) => {
+  const handleSendMessage = (textToSend?: string) => {
     const query = textToSend || inputPrompt.trim();
     if (!query || isLoading) return;
-
-    const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: query,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setMessages(prev => [...prev, userMsg]);
     setInputPrompt('');
-    setIsLoading(true);
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: query,
-          conversationHistory: messages
-        })
-      });
-
-      const data = await res.json();
-      const botMsg: ChatMessage = {
-        id: `bot-${Date.now()}`,
-        role: 'assistant',
-        content: data.reply || 'Cảm ơn bạn đã hỏi. Tôi đã ghi nhận và đang chuẩn bị thông tin tốt nhất.',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        suggestions: data.suggestions || [
-          'Gợi ý homestay đẹp tại Pả Vi',
-          'Lịch họp chợ phiên cuối tuần',
-          'Thời gian chèo thuyền ngắm hoàng hôn Nho Quế'
-        ]
-      };
-
-      setMessages(prev => [...prev, botMsg]);
-    } catch (error) {
-      console.error('Chat error:', error);
-      const errorMsg: ChatMessage = {
-        id: `err-${Date.now()}`,
-        role: 'assistant',
-        content: 'Rất tiếc đã có gián đoạn kết nối. Bạn vui lòng thử lại câu hỏi nhé!',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setMessages(prev => [...prev, errorMsg]);
-    } finally {
-      setIsLoading(false);
-    }
+    void send(query);
   };
 
   const handleCopy = (text: string, id: string) => {
@@ -151,10 +108,12 @@ Bạn muốn bắt đầu khám phá điều gì ngay bây giờ?`,
                   <span>{msg.timestamp}</span>
                 </div>
 
-                {/* Message Body with clean formatting */}
-                <div className="space-y-2 leading-relaxed whitespace-pre-line">
-                  {msg.content}
-                </div>
+                {/* Trợ lý trả lời bằng markdown; tin nhắn của người dùng giữ nguyên văn */}
+                {msg.role === 'assistant' ? (
+                  <MarkdownMessage content={msg.content} />
+                ) : (
+                  <div className="leading-relaxed whitespace-pre-line">{msg.content}</div>
+                )}
 
                 {/* Copy button for Assistant */}
                 {msg.role === 'assistant' && (
@@ -202,6 +161,12 @@ Bạn muốn bắt đầu khám phá điều gì ngay bây giờ?`,
             </div>
           ))}
 
+          {isRestoring && (
+            <div className="text-center text-xs text-[#6e7977] py-2">
+              Đang khôi phục lịch sử trò chuyện...
+            </div>
+          )}
+
           {/* Loading Indicator */}
           {isLoading && (
             <div className="flex items-start gap-3">
@@ -217,6 +182,52 @@ Bạn muốn bắt đầu khám phá điều gì ngay bây giờ?`,
 
           <div ref={chatEndRef} />
         </div>
+
+        {/* Chuyển tiếp nhân viên (FR-BOT-08). Cố tình KHÔNG hứa thời gian phản hồi: hệ thống
+            chưa có vai trò CSKH nào đọc hàng đợi này. Cùng nguyên tắc với Footer — không để giao
+            diện hứa một thứ hệ thống không thực hiện được. */}
+        {escalated && (
+          <div className="mx-4 sm:mx-6 mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <LifeBuoy className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-900">
+                <p className="font-semibold mb-1">Đã ghi nhận để nhân viên hỗ trợ xem lại</p>
+                <p className="leading-relaxed">
+                  Nội dung trao đổi của bạn đã được lưu kèm ngữ cảnh đầy đủ. Bộ phận hỗ trợ trực
+                  tiếp đang trong quá trình xây dựng nên chưa có mốc thời gian phản hồi.{' '}
+                  <strong>Nếu là tình huống khẩn trên đường đèo</strong>, gọi ngay 113, 115 hoặc 114.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Thu thập phản hồi sau phiên hỗ trợ (FR-BOT-11) */}
+        {messages.length > 2 && (
+          <div className="mx-4 sm:mx-6 mb-4 flex items-center justify-end gap-3 text-xs text-[#6e7977]">
+            {satisfaction === null ? (
+              <>
+                <span>Câu trả lời có hữu ích không?</span>
+                <button
+                  onClick={() => void rate(1)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#bdc9c6] hover:border-emerald-500 hover:text-emerald-700 transition-colors"
+                >
+                  <ThumbsUp className="w-3.5 h-3.5" />
+                  <span>Hữu ích</span>
+                </button>
+                <button
+                  onClick={() => void rate(-1)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#bdc9c6] hover:border-rose-500 hover:text-rose-700 transition-colors"
+                >
+                  <ThumbsDown className="w-3.5 h-3.5" />
+                  <span>Chưa ổn</span>
+                </button>
+              </>
+            ) : (
+              <span className="text-emerald-700 font-medium">Cảm ơn bạn đã phản hồi.</span>
+            )}
+          </div>
+        )}
 
         {/* Input Bar */}
         <div className="p-4 bg-[#f7faf8] border-t border-[#e0e3e1]">

@@ -1,6 +1,21 @@
 import React, { useState } from 'react';
-import { Sparkles, X, Send, Bot, User, RefreshCw, MessageSquare } from 'lucide-react';
+import { Sparkles, X, Send, User, RefreshCw, LifeBuoy } from 'lucide-react';
 import { ChatMessage } from '../types';
+import { MarkdownMessage } from './MarkdownMessage';
+import { useChatSession } from '../hooks/useChatSession';
+
+/** Hằng số ngoài component để tham chiếu không đổi giữa các lần render. */
+const MODAL_GREETING: ChatMessage = {
+  id: 'm-init',
+  role: 'assistant',
+  content: 'Chào bạn! Tôi là Trợ Lý Thổ Địa AI Hà Giang. Bạn đang cần tư vấn về cung đường, thời tiết đèo hay điểm ăn nghỉ nào?',
+  timestamp: 'Vừa xong',
+  suggestions: [
+    'Đường đèo Mã Pí Lèng có khó đi không?',
+    'Thời tiết Lũng Cú hôm nay',
+    'Gợi ý homestay view đẹp ở Pả Vi'
+  ]
+};
 
 interface AIConciergeModalProps {
   isOpen: boolean;
@@ -13,68 +28,20 @@ export const AIConciergeModal: React.FC<AIConciergeModalProps> = ({
   onClose,
   onNavigateToFullChat
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'm-init',
-      role: 'assistant',
-      content: 'Chào bạn! Tôi là Trợ Lý Thổ Địa AI Hà Giang. Bạn đang cần tư vấn về cung đường, thời tiết đèo hay điểm ăn nghỉ nào?',
-      timestamp: 'Vừa xong',
-      suggestions: [
-        'Đường đèo Mã Pí Lèng có khó đi không?',
-        'Thời tiết Lũng Cú hôm nay',
-        'Gợi ý homestay view đẹp ở Pả Vi'
-      ]
-    }
-  ]);
+  // Phiên chat nằm ở ChatSessionProvider bọc cả ứng dụng (App.tsx), nên widget và tab đầy đủ
+  // đọc CÙNG một state: khách hỏi ở đâu thì mở phía kia vẫn thấy nguyên hội thoại (FR-BOT-07).
+  // Hook vẫn phải gọi trước `return null` bên dưới theo quy tắc hook, và giờ điều đó vô hại vì
+  // nó chỉ đọc context chứ không tự mở phiên như bản trước.
+  const { messages, isLoading, escalated, send } = useChatSession(MODAL_GREETING);
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSend = async (customText?: string) => {
-    const q = customText || input.trim();
+  const handleSend = (customText?: string) => {
+    const q = (customText || input).trim();
     if (!q || isLoading) return;
-
-    const userMsg: ChatMessage = {
-      id: `u-${Date.now()}`,
-      role: 'user',
-      content: q,
-      timestamp: 'Bây giờ'
-    };
-    setMessages(prev => [...prev, userMsg]);
     setInput('');
-    setIsLoading(true);
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: q })
-      });
-      const data = await res.json();
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `a-${Date.now()}`,
-          role: 'assistant',
-          content: data.reply || 'Cảm ơn bạn. Tôi đã ghi nhận câu hỏi.',
-          timestamp: 'Bây giờ',
-          suggestions: data.suggestions
-        }
-      ]);
-    } catch (e) {
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `e-${Date.now()}`,
-          role: 'assistant',
-          content: 'Không thể kết nối máy chủ AI. Vui lòng thử lại sau!',
-          timestamp: 'Bây giờ'
-        }
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
+    void send(q);
   };
 
   return (
@@ -92,7 +59,7 @@ export const AIConciergeModal: React.FC<AIConciergeModalProps> = ({
                 Trợ Lý Thổ Địa AI Hà Giang
               </h3>
               <p className="text-[10px] text-white/80">
-                Sẵn sàng giải đáp 24/7 • Gemini 3.7
+                Sẵn sàng giải đáp 24/7 • Google Gemini
               </p>
             </div>
           </div>
@@ -115,12 +82,16 @@ export const AIConciergeModal: React.FC<AIConciergeModalProps> = ({
                 {m.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
               </div>
 
-              <div className={`p-3 rounded-2xl text-xs max-w-[85%] leading-relaxed whitespace-pre-line ${
+              <div className={`p-3 rounded-2xl text-xs max-w-[85%] leading-relaxed ${
                 m.role === 'user'
                   ? 'bg-[#005c55] text-white rounded-tr-none'
                   : 'bg-[#f1f4f3] text-[#181c1c] rounded-tl-none border border-[#e0e3e1]'
               }`}>
-                {m.content}
+                {m.role === 'assistant' ? (
+                  <MarkdownMessage content={m.content} />
+                ) : (
+                  <div className="whitespace-pre-line">{m.content}</div>
+                )}
 
                 {m.suggestions && m.suggestions.length > 0 && (
                   <div className="mt-3 pt-2 border-t border-black/5 flex flex-wrap gap-1.5">
@@ -146,6 +117,18 @@ export const AIConciergeModal: React.FC<AIConciergeModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Chuyển tiếp nhân viên (FR-BOT-08). Không hứa thời gian phản hồi — chưa có ai trực
+            hàng đợi này. Tình huống khẩn hướng thẳng sang số cứu hộ quốc gia. */}
+        {escalated && (
+          <div className="mx-3 mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 flex items-start gap-2">
+            <LifeBuoy className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-relaxed text-amber-900">
+              Đã ghi nhận để nhân viên hỗ trợ xem lại. Chưa có mốc thời gian phản hồi.
+              Tình huống khẩn: gọi <strong>113 · 115 · 114</strong>.
+            </p>
+          </div>
+        )}
 
         {/* Input */}
         <div className="p-3 bg-[#f7faf8] border-t border-[#e0e3e1] flex items-center gap-2">
