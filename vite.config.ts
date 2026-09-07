@@ -6,6 +6,15 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    build: {
+      /**
+       * Client build nằm riêng trong dist/client, tách khỏi dist/server.cjs mà esbuild sinh ra.
+       * Server chỉ phục vụ tĩnh thư mục này, nên bundle server và sourcemap của nó không bị
+       * express.static đem ra ngoài.
+       */
+      outDir: 'dist/client',
+      emptyOutDir: true,
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

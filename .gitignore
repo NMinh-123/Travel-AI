@@ -2,7 +2,15 @@ node_modules/
 build/
 dist/
 coverage/
+venv/
+.venv/
+__pycache__/
+*.pyc
 .DS_Store
 *.log
 .env*
 !.env.example
+
+# Bản thô do scripts/crawl-web.ts tải về. Tái tạo được bằng `npm run db:crawl`;
+# thứ cần review qua git là bản đã biên tập ở scripts/knowledge-web.ts.
+scripts/raw-web/
