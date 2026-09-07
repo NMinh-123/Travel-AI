@@ -14,13 +14,48 @@ export interface Destination {
   description: string;
   safetyTip: string;
   coordinates: { x: number; y: number; lat: number; lng: number }; // SVG map coordinates
-  weatherTag?: {
-    temp: number;
-    condition: string;
-    fogRisk: 'Thấp' | 'Trung bình' | 'Dày đặc' | 'Cảnh báo sạt lở mùa mưa';
-  };
   recommendedStayHours: number;
   localFood: string[];
+}
+
+/**
+ * Một điểm trên bản đồ SVG cao nguyên đá. `id` là slug bền vững ('ma-pi-leng'), giống
+ * `Destination.id` — server map từ cột `slug` sang đây để frontend không phụ thuộc vào id
+ * sinh tự động của database.
+ */
+export interface MapWaypoint {
+  id: string;
+  name: string;
+  vietnamese: string;
+  km: number;
+  elevation: number;
+  x: number; // toạ độ trong canvas SVG 950x650
+  y: number;
+  type: 'city' | 'pass' | 'scenic' | 'water' | 'culture';
+  warning?: string;
+  destinationRef?: string; // trỏ tới Destination.id khi có trang chi tiết tương ứng
+}
+
+/** Một bộ lịch trình mẫu do hệ thống cung cấp, dùng làm mặc định cho trình lập lịch trình. */
+export interface PresetItinerary {
+  id: string;
+  title: string;
+  overview: string;
+  totalKm: number;
+  days: DayItinerary[];
+}
+
+/** Lịch trình do người dùng lưu lại sau khi AI sinh ra. */
+export interface SavedItinerary {
+  id: string;
+  title: string;
+  overview: string;
+  totalKm: number;
+  travelMode?: string;
+  vibe?: string;
+  budgetLevel?: string;
+  days: DayItinerary[];
+  createdAt: string;
 }
 
 export interface RouteWaypoint {
@@ -87,7 +122,6 @@ export interface WeatherPassStatus {
   windSpeedKm: number;
   fogLevel: 'Quang đãng' | 'Sương mù nhẹ' | 'Sương mù dày đặc' | 'Mưa trơn trượt';
   roadStatus: 'An toàn' | 'Lưu ý cua dốc' | 'Đường ướt trơn' | 'Cảnh báo hạn chế tầm nhìn';
-  updatedAt: string;
 }
 
 export interface GearItem {
@@ -109,7 +143,6 @@ export interface HomestaySpot {
   imageUrl: string;
   tags: string[];
   highlight: string;
-  phone: string;
 }
 
 export interface UserProfile {
@@ -117,7 +150,8 @@ export interface UserProfile {
   name: string;
   email: string;
   avatar: string;
-  provider: 'google' | 'facebook' | 'email';
+  /** Facebook đã bị bỏ khỏi luồng đăng nhập: cần Facebook App + SDK riêng, chưa có. */
+  provider: 'google' | 'email';
   phone?: string;
   riderLevel?: 'Mới bắt đầu' | 'Đã có kinh nghiệm' | 'Phượt thủ lão luyện' | 'Đi theo tour Easy Rider';
   favoriteDestinations: string[];

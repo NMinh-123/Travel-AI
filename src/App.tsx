@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
 import { DestinationsGrid } from './components/DestinationsGrid';
@@ -11,10 +12,12 @@ import { AIConciergeModal } from './components/AIConciergeModal';
 import { AuthModal } from './components/AuthModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { Footer } from './components/Footer';
-import { DESTINATIONS } from './data/hagiangData';
+import { ErrorState, LoadingState } from './components/LoadingState';
+import { useDestinations, usePassWeather } from './hooks/useContent';
 import { Destination } from './types';
 import { Sparkles } from 'lucide-react';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
+import { ChatSessionProvider } from './hooks/useChatSession';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<'explore' | 'planner' | 'map' | 'concierge' | 'guide'>('explore');
@@ -22,6 +25,16 @@ function AppContent() {
   const [isQuickConciergeOpen, setIsQuickConciergeOpen] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [aiPromptSeed, setAiPromptSeed] = useState<string>('');
+  const [plannerFocus, setPlannerFocus] = useState<string>('');
+  const [mapFocus, setMapFocus] = useState<string>('');
+
+  /**
+   * Điểm đến và số liệu đèo tham khảo được lấy một lần ở đây rồi truyền xuống, vì có nhiều
+   * chỗ cùng cần: điểm đến dùng ở hero, lưới khám phá, bản đồ và hồ sơ; số liệu đèo dùng ở
+   * navbar và tab cẩm nang. Fetch trong từng component sẽ gọi lặp cùng một endpoint.
+   */
+  const destinations = useDestinations();
+  const passWeather = usePassWeather();
 
   const handleAskAI = (promptText: string) => {
     setAiPromptSeed(promptText);
@@ -29,9 +42,32 @@ function AppContent() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // Điểm đến vừa chọn được chuyển tiếp sang planner, để lịch trình AI thực sự ghé nơi đó.
   const handlePlanTripTo = (dest: Destination) => {
+    setPlannerFocus(dest.vietnameseName);
     setActiveTab('planner');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleOpenMapToLocation = (locationName: string) => {
+    setMapFocus(locationName);
+    setActiveTab('map');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const destinationList = destinations.data ?? [];
+
+  /**
+   * Ba tab dựa trên danh sách điểm đến nên dùng chung một cách xử lý trạng thái tải, thay vì
+   * mỗi tab tự vẽ một kiểu. Lỗi có nút thử lại: sự cố mạng tạm thời không nên buộc người dùng
+   * tải lại cả trang.
+   */
+  const renderWithDestinations = (children: ReactNode) => {
+    if (destinations.isLoading) return <LoadingState label="Đang tải dữ liệu Hà Giang..." />;
+    if (destinations.error) {
+      return <ErrorState message={destinations.error} onRetry={destinations.reload} />;
+    }
+    return children;
   };
 
   return (
@@ -43,47 +79,52 @@ function AppContent() {
         setActiveTab={setActiveTab}
         onOpenConcierge={() => setIsQuickConciergeOpen(true)}
         onOpenProfile={() => setIsProfileModalOpen(true)}
+        passWeather={passWeather.data ?? []}
       />
 
       {/* Main Dynamic View Content */}
       <main className="flex-1">
-        {activeTab === 'explore' && (
-          <div>
-            <HeroSection
-              destinations={DESTINATIONS}
-              onExploreClick={() => {
-                const el = document.getElementById('destinations-section');
-                el?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              onPlanClick={() => setActiveTab('planner')}
-              onMapClick={() => setActiveTab('map')}
-              onSelectDestination={(dest) => setSelectedDestination(dest)}
-            />
-
-            <div id="destinations-section">
-              <DestinationsGrid
-                destinations={DESTINATIONS}
+        {activeTab === 'explore' &&
+          renderWithDestinations(
+            <div>
+              <HeroSection
+                destinations={destinationList}
+                onExploreClick={() => {
+                  const el = document.getElementById('destinations-section');
+                  el?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                onPlanClick={() => setActiveTab('planner')}
+                onMapClick={() => setActiveTab('map')}
                 onSelectDestination={(dest) => setSelectedDestination(dest)}
-                onAskAIAbout={(name) => handleAskAI(`Tư vấn chi tiết về kinh nghiệm tham quan, ăn uống và chụp ảnh tại ${name}`)}
               />
+
+              <div id="destinations-section">
+                <DestinationsGrid
+                  destinations={destinationList}
+                  onSelectDestination={(dest) => setSelectedDestination(dest)}
+                  onAskAIAbout={(name) => handleAskAI(`Tư vấn chi tiết về kinh nghiệm tham quan, ăn uống và chụp ảnh tại ${name}`)}
+                />
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {activeTab === 'planner' && (
           <ItineraryPlanner
             onAskAI={handleAskAI}
-            onOpenMapToLocation={(loc) => setActiveTab('map')}
+            onOpenMapToLocation={handleOpenMapToLocation}
+            focusDestination={plannerFocus}
           />
         )}
 
-        {activeTab === 'map' && (
-          <HighlandsMap
-            destinations={DESTINATIONS}
-            onSelectDestination={(dest) => setSelectedDestination(dest)}
-            onAskAI={handleAskAI}
-          />
-        )}
+        {activeTab === 'map' &&
+          renderWithDestinations(
+            <HighlandsMap
+              destinations={destinationList}
+              onSelectDestination={(dest) => setSelectedDestination(dest)}
+              onAskAI={handleAskAI}
+              focusLocation={mapFocus}
+            />
+          )}
 
         {activeTab === 'concierge' && (
           <AIConciergeTab
@@ -94,6 +135,7 @@ function AppContent() {
         {activeTab === 'guide' && (
           <PocketGuideSection
             onAskAI={handleAskAI}
+            passWeather={passWeather.data ?? []}
           />
         )}
       </main>
@@ -135,6 +177,7 @@ function AppContent() {
       <UserProfileModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
+        destinations={destinationList}
         onSelectDestination={(dest) => {
           setIsProfileModalOpen(false);
           setSelectedDestination(dest);
@@ -145,7 +188,7 @@ function AppContent() {
         }}
       />
 
-      {/* Auth Modal (Google, Facebook, Email Signup & Login) */}
+      {/* Auth Modal (đăng nhập Google và email) */}
       <AuthModal />
 
       {/* Footer */}
@@ -161,7 +204,10 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      {/* Một phiên chat duy nhất cho cả widget nổi và tab Thổ Địa AI (FR-BOT-07). */}
+      <ChatSessionProvider>
+        <AppContent />
+      </ChatSessionProvider>
     </AuthProvider>
   );
 }
