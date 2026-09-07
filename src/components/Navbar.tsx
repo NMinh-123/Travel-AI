@@ -1,22 +1,39 @@
 import React from 'react';
-import { Compass, Calendar, MapPin, MessageSquareText, ShieldCheck, CloudSun, Sparkles, User, LogIn } from 'lucide-react';
+import { Compass, Calendar, MapPin, ShieldCheck, CloudSun, Sparkles, User, LogIn } from 'lucide-react';
 import { Logo } from './Logo';
 import { useAuth } from '../context/AuthContext';
+import type { WeatherPassStatus } from '../types';
 
 interface NavbarProps {
   activeTab: 'explore' | 'planner' | 'map' | 'concierge' | 'guide';
   setActiveTab: (tab: 'explore' | 'planner' | 'map' | 'concierge' | 'guide') => void;
   onOpenConcierge: () => void;
   onOpenProfile: () => void;
+  /**
+   * Số liệu đèo tham khảo, do App lấy một lần rồi truyền xuống để navbar và tab cẩm nang
+   * không gọi lặp cùng một endpoint. Mảng rỗng trong lúc đang tải — badge tự ẩn.
+   */
+  passWeather: WeatherPassStatus[];
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ 
-  activeTab, 
-  setActiveTab, 
+export const Navbar: React.FC<NavbarProps> = ({
+  activeTab,
+  setActiveTab,
   onOpenConcierge,
-  onOpenProfile
+  onOpenProfile,
+  passWeather
 }) => {
   const { user, isAuthenticated, openAuthModal } = useAuth();
+
+  /**
+   * Badge này trước đây ghi cứng "18°C • Nắng ráo" dưới một comment "Live Weather". Chưa có
+   * API thời tiết nên không thể làm nó live thật; ít nhất số liệu giờ lấy từ đúng một nguồn
+   * dùng chung với tab cẩm nang, và nhãn nói rõ đây là giá trị tham khảo.
+   */
+  const maPiLengReference = passWeather.find(station =>
+    station.location.includes('Mã Pí Lèng')
+  );
+
   return (
     <header className="sticky top-0 z-40 w-full bg-[#f7faf8]/90 backdrop-blur-md border-b border-[#e0e3e1] transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
@@ -112,14 +129,23 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right Info & Action Buttons */}
         <div className="flex items-center gap-3">
-          {/* Live Weather Badge on Mã Pí Lèng */}
-          <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-[#bdc9c6]/60 text-xs font-medium text-[#181c1c] shadow-xs">
-            <CloudSun className="w-4 h-4 text-amber-600" />
-            <div>
-              <span className="text-[#6e7977] text-[10px] block leading-none">Mã Pí Lèng</span>
-              <span className="font-semibold text-xs">18°C • Nắng ráo</span>
+          {/* Điều kiện tham khảo tại Mã Pí Lèng — không phải số liệu thời gian thực */}
+          {maPiLengReference && (
+            <div
+              title="Giá trị tham khảo theo mùa, không phải quan trắc thời gian thực"
+              className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-[#bdc9c6]/60 text-xs font-medium text-[#181c1c] shadow-xs"
+            >
+              <CloudSun className="w-4 h-4 text-amber-600" />
+              <div>
+                <span className="text-[#6e7977] text-[10px] block leading-none">
+                  Mã Pí Lèng · tham khảo
+                </span>
+                <span className="font-semibold text-xs">
+                  {maPiLengReference.temp}°C • {maPiLengReference.fogLevel}
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* User Auth Section */}
           {isAuthenticated && user ? (

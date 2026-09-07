@@ -1,42 +1,107 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { DESTINATIONS } from '../data/hagiangData';
-import { 
-  X, User, Shield, Award, Heart, Calendar, LogOut, 
-  MapPin, Mountain, Phone, CheckCircle, Sparkles, ExternalLink
-} from 'lucide-react';
-import { Destination } from '../types';
+import { X, Award, Heart, LogOut, Mountain, Phone, CheckCircle, Route, Trash2 } from 'lucide-react';
+import type { Destination, UserProfile } from '../types';
 
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** App đã lấy danh sách điểm đến từ API, truyền xuống để không gọi lặp endpoint. */
+  destinations: Destination[];
   onSelectDestination: (dest: Destination) => void;
   onOpenPlanner: () => void;
 }
 
-export const UserProfileModal: React.FC<UserProfileModalProps> = ({
-  isOpen,
-  onClose,
-  onSelectDestination,
-  onOpenPlanner
+/**
+ * Ô số điện thoại cứu hộ, tách riêng vì lý do vòng đời chứ không phải vì bố cục.
+ *
+ * App mount UserProfileModal vô điều kiện ngay khi khởi động, lúc đó `user` còn null. Bản cũ
+ * giữ state số điện thoại ở component cha và khởi tạo bằng `useState(user?.phone || '')` — một
+ * lần duy nhất, với user là null — nên ô nhập luôn rỗng dù hồ sơ đã có số, và bấm "Lưu lại" là
+ * ghi chuỗi rỗng đè lên số đang lưu. Đây là số liên hệ cứu hộ đường đèo, mất là mất im lặng.
+ *
+ * Component này chỉ được render khi modal đã mở và đã có user, nên nó mount lại mỗi lần mở
+ * modal và state luôn khởi tạo từ giá trị thật của hồ sơ.
+ */
+interface EmergencyPhoneFieldProps {
+  savedPhone: string;
+  onSave: (phone: string) => Promise<{ success: boolean; error?: string }>;
+  onError: (message: string | null) => void;
+}
+
+const EmergencyPhoneField: React.FC<EmergencyPhoneFieldProps> = ({
+  savedPhone,
+  onSave,
+  onError
 }) => {
-  const { user, logout, updateProfile, toggleFavorite } = useAuth();
-  const [activeTab, setActiveTab] = useState<'info' | 'favorites' | 'badges'>('info');
-  const [editingPhone, setEditingPhone] = useState(user?.phone || '');
+  const [phone, setPhone] = useState(savedPhone);
   const [isSaved, setIsSaved] = useState(false);
 
-  if (!isOpen || !user) return null;
+  /**
+   * Chờ server xác nhận rồi mới báo "đã lưu". Bản trước gọi updateProfile không await nên
+   * dấu tích hiện lên trước khi biết request có thành công hay không.
+   */
+  const handleSave = async () => {
+    onError(null);
+    const result = await onSave(phone);
 
-  const favoriteSpots = DESTINATIONS.filter(d => user.favoriteDestinations.includes(d.id));
-
-  const handleSaveProfile = () => {
-    updateProfile({ phone: editingPhone });
+    if (!result.success) {
+      onError(result.error ?? 'Không lưu được số điện thoại');
+      return;
+    }
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
   };
 
-  const handleLevelChange = (level: any) => {
-    updateProfile({ riderLevel: level });
+  return (
+    <div>
+      <label className="block text-xs font-bold text-[#181c1c] uppercase tracking-wider mb-2">
+        Số Điện Thoại Liên Hệ Cứu Hộ / Đặt Xe
+      </label>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Phone className="w-4 h-4 text-[#6e7977] absolute left-3.5 top-3" />
+          <input
+            type="tel"
+            placeholder="Nhập số điện thoại (ví dụ: 0912 345 678)"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 text-xs bg-[#f7faf8] border border-[#bdc9c6] rounded-xl focus:outline-none focus:border-[#005c55] text-[#181c1c]"
+          />
+        </div>
+        <button
+          onClick={handleSave}
+          className="px-4 py-2.5 bg-[#005c55] hover:bg-[#0f766e] text-white rounded-xl text-xs font-semibold transition-colors"
+        >
+          {isSaved ? 'Đã lưu!' : 'Lưu lại'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export const UserProfileModal: React.FC<UserProfileModalProps> = ({
+  isOpen,
+  onClose,
+  destinations,
+  onSelectDestination,
+  onOpenPlanner
+}) => {
+  const { user, logout, updateProfile, toggleFavorite, savedItineraries, deleteSavedItinerary } =
+    useAuth();
+  const [activeTab, setActiveTab] = useState<'info' | 'favorites' | 'itineraries' | 'badges'>(
+    'info'
+  );
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  if (!isOpen || !user) return null;
+
+  const favoriteSpots = destinations.filter(d => user.favoriteDestinations.includes(d.id));
+
+  const handleLevelChange = async (level: UserProfile['riderLevel']) => {
+    setSaveError(null);
+    const result = await updateProfile({ riderLevel: level });
+    if (!result.success) setSaveError(result.error ?? 'Không lưu được trình độ lái xe');
   };
 
   return (
@@ -98,6 +163,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           {[
             { id: 'info', label: '👤 Hồ Sơ & Cài Đặt' },
             { id: 'favorites', label: `❤️ Điểm Đã Lưu (${user.favoriteDestinations.length})` },
+            { id: 'itineraries', label: `🗺️ Lịch Trình (${savedItineraries.length})` },
             { id: 'badges', label: '🏆 Huy Hiệu Phượt' },
           ].map((tab) => (
             <button
@@ -127,12 +193,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   Kinh Nghiệm Lái Xe Đèo Dốc
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {[
-                    { id: 'Mới bắt đầu', desc: 'Chưa từng đi đèo, cần đường dễ & cảnh báo sớm' },
-                    { id: 'Đã có kinh nghiệm', desc: 'Tự tin đi xe số, có kỹ năng hãm động cơ' },
-                    { id: 'Phượt thủ lão luyện', desc: 'Sẵn sàng vượt cung hiểm trở như Mã Pí Lèng' },
-                    { id: 'Đi theo tour Easy Rider', desc: 'Ngồi sau tài xế bản địa, ưu tiên ngắm cảnh' }
-                  ].map((lvl) => (
+                  {(
+                    [
+                      { id: 'Mới bắt đầu', desc: 'Chưa từng đi đèo, cần đường dễ & cảnh báo sớm' },
+                      { id: 'Đã có kinh nghiệm', desc: 'Tự tin đi xe số, có kỹ năng hãm động cơ' },
+                      { id: 'Phượt thủ lão luyện', desc: 'Sẵn sàng vượt cung hiểm trở như Mã Pí Lèng' },
+                      { id: 'Đi theo tour Easy Rider', desc: 'Ngồi sau tài xế bản địa, ưu tiên ngắm cảnh' }
+                    ] as { id: NonNullable<UserProfile['riderLevel']>; desc: string }[]
+                  ).map((lvl) => (
                     <button
                       key={lvl.id}
                       onClick={() => handleLevelChange(lvl.id)}
@@ -155,29 +223,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               </div>
 
               {/* Emergency Contact Phone */}
-              <div>
-                <label className="block text-xs font-bold text-[#181c1c] uppercase tracking-wider mb-2">
-                  Số Điện Thoại Liên Hệ Cứu Hộ / Đặt Xe
-                </label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Phone className="w-4 h-4 text-[#6e7977] absolute left-3.5 top-3" />
-                    <input
-                      type="tel"
-                      placeholder="Nhập số điện thoại (ví dụ: 0912 345 678)"
-                      value={editingPhone}
-                      onChange={(e) => setEditingPhone(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 text-xs bg-[#f7faf8] border border-[#bdc9c6] rounded-xl focus:outline-none focus:border-[#005c55] text-[#181c1c]"
-                    />
-                  </div>
-                  <button
-                    onClick={handleSaveProfile}
-                    className="px-4 py-2.5 bg-[#005c55] hover:bg-[#0f766e] text-white rounded-xl text-xs font-semibold transition-colors"
-                  >
-                    {isSaved ? 'Đã lưu!' : 'Lưu lại'}
-                  </button>
+              <EmergencyPhoneField
+                savedPhone={user.phone ?? ''}
+                onSave={(phone) => updateProfile({ phone })}
+                onError={setSaveError}
+              />
+
+              {saveError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800">
+                  {saveError}
                 </div>
-              </div>
+              )}
 
               {/* Account Quick Stats */}
               <div className="bg-[#f7faf8] rounded-2xl p-4 border border-[#e0e3e1] grid grid-cols-2 gap-4 text-xs">
@@ -252,7 +308,70 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             </div>
           )}
 
-          {/* Tab 3: Badges */}
+          {/* Tab 3: Lịch trình đã lưu — trước đây UserProfile.savedItineraries là một trường
+              chỉ có trong type mà không đường nào ghi vào và không chỗ nào hiển thị. */}
+          {activeTab === 'itineraries' && (
+            <div className="space-y-3">
+              {savedItineraries.length === 0 ? (
+                <div className="text-center py-10">
+                  <Route className="w-10 h-10 text-[#bdc9c6] mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-[#181c1c]">
+                    Bạn chưa lưu lịch trình nào
+                  </p>
+                  <p className="text-xs text-[#6e7977] mt-1 max-w-sm mx-auto leading-relaxed">
+                    Vào tab lập lịch trình, để AI tạo một cung đường theo ý bạn rồi bấm
+                    "Lưu lịch trình" — nó sẽ xuất hiện ở đây.
+                  </p>
+                  <button
+                    onClick={onOpenPlanner}
+                    className="mt-4 px-4 py-2 rounded-xl bg-[#005c55] hover:bg-[#0f766e] text-white text-xs font-semibold transition-colors"
+                  >
+                    Mở trình lập lịch trình
+                  </button>
+                </div>
+              ) : (
+                savedItineraries.map((itinerary) => (
+                  <div
+                    key={itinerary.id}
+                    className="p-4 rounded-2xl border border-[#e0e3e1] bg-[#f7faf8] hover:bg-white transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h4 className="font-display text-sm font-bold text-[#181c1c] leading-snug">
+                          {itinerary.title}
+                        </h4>
+                        <p className="text-xs text-[#3e4947] mt-1 line-clamp-2 leading-relaxed">
+                          {itinerary.overview}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => deleteSavedItinerary(itinerary.id)}
+                        aria-label={`Xoá lịch trình ${itinerary.title}`}
+                        className="p-2 rounded-lg text-[#6e7977] hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 mt-3 text-[11px] text-[#6e7977]">
+                      <span className="px-2 py-0.5 rounded-md bg-white border border-[#bdc9c6] font-medium">
+                        {itinerary.days.length} ngày
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-white border border-[#bdc9c6] font-medium">
+                        ~{itinerary.totalKm.toLocaleString('vi-VN')} km
+                      </span>
+                      <span>
+                        Lưu ngày {new Date(itinerary.createdAt).toLocaleDateString('vi-VN')}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* Tab 4: Badges */}
           {activeTab === 'badges' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
@@ -306,12 +425,23 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             <span>Đăng xuất</span>
           </button>
 
-          <button
-            onClick={onClose}
-            className="px-5 py-2 bg-[#005c55] hover:bg-[#0f766e] text-white rounded-xl text-xs font-semibold transition-colors"
-          >
-            Đóng
-          </button>
+          <div className="flex items-center gap-2">
+            {/* onOpenPlanner được App truyền vào nhưng trước đây không có gì gọi tới. */}
+            <button
+              onClick={onOpenPlanner}
+              className="px-4 py-2 rounded-xl border border-[#bdc9c6] text-xs font-semibold text-[#005c55] hover:bg-white transition-colors flex items-center gap-1.5"
+            >
+              <Mountain className="w-4 h-4" />
+              <span>Lập lịch trình mới</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="px-5 py-2 bg-[#005c55] hover:bg-[#0f766e] text-white rounded-xl text-xs font-semibold transition-colors"
+            >
+              Đóng
+            </button>
+          </div>
         </div>
 
       </div>
