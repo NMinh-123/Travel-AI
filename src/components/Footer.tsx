@@ -1,5 +1,5 @@
 import React from 'react';
-import { PhoneCall, ShieldAlert, Heart, MapPin, Sparkles } from 'lucide-react';
+import { PhoneCall, Sparkles } from 'lucide-react';
 import { Logo } from './Logo';
 
 interface FooterProps {
@@ -60,21 +60,35 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTab }) => {
             </ul>
           </div>
 
-          {/* Emergency Pass Rescue Hotlines */}
+          {/* Số khẩn cấp: chỉ dùng đầu số quốc gia có thật, không bịa số cứu hộ địa phương */}
           <div>
             <h4 className="font-display text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2">
               <PhoneCall className="w-4 h-4 text-emerald-400" />
-              <span>Hotline Cứu Hộ Đường Đèo</span>
+              <span>Số Khẩn Cấp Trên Đường Đèo</span>
             </h4>
-            <div className="space-y-2.5 text-xs text-[#bdc9c6]">
-              <div className="bg-white/5 p-2.5 rounded-xl border border-white/10">
-                <span className="block text-[11px] text-white/60">Cứu hộ xe máy TP Hà Giang & Quản Bạ:</span>
-                <span className="font-mono font-bold text-emerald-300">0982 123 456</span>
-              </div>
-              <div className="bg-white/5 p-2.5 rounded-xl border border-white/10">
-                <span className="block text-[11px] text-white/60">Cứu hộ đèo Mã Pí Lèng & Mèo Vạc:</span>
-                <span className="font-mono font-bold text-emerald-300">0912 888 999</span>
-              </div>
+            <div className="space-y-2 text-xs text-[#bdc9c6]">
+              {[
+                { label: 'Cảnh sát & cứu hộ giao thông', number: '113' },
+                { label: 'Cấp cứu y tế', number: '115' },
+                { label: 'Cứu hoả, cứu nạn cứu hộ', number: '114' }
+              ].map((line) => (
+                <div
+                  key={line.number}
+                  className="bg-white/5 p-2.5 rounded-xl border border-white/10 flex items-center justify-between gap-3"
+                >
+                  <span className="text-[11px] text-white/60">{line.label}</span>
+                  <a
+                    href={`tel:${line.number}`}
+                    className="font-mono font-bold text-emerald-300 hover:underline shrink-0"
+                  >
+                    {line.number}
+                  </a>
+                </div>
+              ))}
+              <p className="text-[11px] text-white/50 leading-relaxed pt-1">
+                Số cứu hộ xe máy khác nhau theo từng huyện. Hãy lưu số của cửa hàng cho thuê xe
+                và homestay ngay khi nhận xe — đó là đầu mối nhanh nhất khi hỏng xe giữa đèo.
+              </p>
             </div>
           </div>
 

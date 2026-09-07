@@ -1,18 +1,53 @@
-import React, { useState } from 'react';
-import { DayItinerary, RouteWaypoint } from '../types';
-import { PRESET_ITINERARIES } from '../data/hagiangData';
-import { 
-  Sparkles, Calendar, Clock, MapPin, Mountain, AlertTriangle, 
-  Send, RefreshCw, CheckCircle2, ChevronRight, Bed, Utensils, 
-  Camera, ShieldAlert, Bike, Car, UserCheck, Flame
+import React, { useEffect, useState } from 'react';
+import type { DayItinerary, PresetItinerary } from '../types';
+import { usePresetItineraries } from '../hooks/useContent';
+import { useAuth } from '../context/AuthContext';
+import { ErrorState, LoadingState } from './LoadingState';
+import {
+  Sparkles, Clock, MapPin, Mountain, AlertTriangle, RefreshCw,
+  CheckCircle2, Bed, Bike, Car, UserCheck, Star, BookmarkPlus, Check
 } from 'lucide-react';
 
 interface ItineraryPlannerProps {
   onAskAI: (prompt: string) => void;
   onOpenMapToLocation?: (locationName: string) => void;
+  /** Tên điểm đến người dùng vừa chọn ở tab khám phá, dùng để mồi sẵn phần ghi chú. */
+  focusDestination?: string;
 }
 
-export const ItineraryPlanner: React.FC<ItineraryPlannerProps> = ({ onAskAI, onOpenMapToLocation }) => {
+/**
+ * Lịch trình mẫu đến từ /api/content/preset-itineraries (trước đây là PRESET_ITINERARIES
+ * trong src/data/hagiangData.ts). Tách phần tải ra vỏ ngoài để phần dựng giao diện luôn có
+ * một lịch trình khởi tạo, thay vì phải xử lý trạng thái "chưa có ngày nào" khắp nơi.
+ */
+export const ItineraryPlanner: React.FC<ItineraryPlannerProps> = (props) => {
+  const presets = usePresetItineraries();
+
+  if (presets.isLoading) return <LoadingState label="Đang tải lịch trình mẫu..." />;
+  if (presets.error) return <ErrorState message={presets.error} onRetry={presets.reload} />;
+
+  const preset = presets.data?.[0];
+  if (!preset || preset.days.length === 0) {
+    return (
+      <ErrorState
+        message="Database chưa có lịch trình mẫu nào. Chạy `npm run db:seed` để nạp dữ liệu."
+        onRetry={presets.reload}
+      />
+    );
+  }
+
+  // key: đổi lịch trình mẫu thì dựng lại state bên trong từ đầu.
+  return <ItineraryPlannerView key={preset.id} {...props} preset={preset} />;
+};
+
+const ItineraryPlannerView: React.FC<ItineraryPlannerProps & { preset: PresetItinerary }> = ({
+  onAskAI,
+  onOpenMapToLocation,
+  focusDestination = '',
+  preset
+}) => {
+  const { isAuthenticated, saveItinerary } = useAuth();
+
   const [selectedDuration, setSelectedDuration] = useState<number>(3);
   const [travelMode, setTravelMode] = useState<'motorbike' | 'easy_rider' | 'car_suv'>('motorbike');
   const [vibe, setVibe] = useState<'photography' | 'culture' | 'adventure' | 'chill'>('photography');
@@ -20,13 +55,27 @@ export const ItineraryPlanner: React.FC<ItineraryPlannerProps> = ({ onAskAI, onO
   const [activeDay, setActiveDay] = useState<number>(1);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [customPrompt, setCustomPrompt] = useState<string>('');
-  
-  // Active itinerary days
-  const [itineraryDays, setItineraryDays] = useState<DayItinerary[]>(PRESET_ITINERARIES[0]);
-  const [customTitle, setCustomTitle] = useState<string>('Lịch Trình Vòng Cung 3N2Đ: Mã Pí Lèng & Du Già Hoang Sơ');
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
+  // Lịch trình đang xem: khởi tạo từ bản mẫu, thay bằng bản do AI sinh sau khi tạo xong.
+  const [itineraryDays, setItineraryDays] = useState<DayItinerary[]>(preset.days);
+  const [customTitle, setCustomTitle] = useState<string>(preset.title);
+  const [overview, setOverview] = useState<string>(preset.overview);
+  const [dailyTips, setDailyTips] = useState<string[]>([]);
+
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Khi người dùng bấm "Thêm Vào Lịch Trình" từ một điểm đến cụ thể, mồi sẵn ghi chú để
+  // lần tạo lịch trình kế tiếp thực sự ghé nơi đó, thay vì bỏ qua lựa chọn của họ.
+  useEffect(() => {
+    if (!focusDestination) return;
+    setCustomPrompt(`Ưu tiên dành thời gian cho ${focusDestination}`);
+  }, [focusDestination]);
 
   const handleGenerateAIItinerary = async () => {
     setIsGenerating(true);
+    setGenerateError(null);
     try {
       const res = await fetch('/api/plan-itinerary', {
         method: 'POST',
@@ -39,20 +88,82 @@ export const ItineraryPlanner: React.FC<ItineraryPlannerProps> = ({ onAskAI, onO
           notes: customPrompt
         })
       });
-      const data = await res.json();
-      if (data.days && Array.isArray(data.days) && data.days.length > 0) {
-        setItineraryDays(data.days);
-        if (data.title) setCustomTitle(data.title);
-        setActiveDay(1);
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(
+          [data?.error, data?.details].filter(Boolean).join(' — ') ||
+            `Máy chủ trả về lỗi ${res.status}`
+        );
       }
+
+      if (!Array.isArray(data?.days) || data.days.length === 0) {
+        throw new Error('Lịch trình trả về không có ngày nào. Bạn vui lòng thử lại.');
+      }
+
+      setItineraryDays(data.days);
+      if (data.title) setCustomTitle(data.title);
+      if (typeof data.overview === 'string' && data.overview.trim()) {
+        setOverview(data.overview.trim());
+      }
+      // dailyTips nằm trong schema nên model luôn sinh ra; trước đây bị bỏ đi hoàn toàn.
+      setDailyTips(
+        Array.isArray(data.dailyTips)
+          ? data.dailyTips
+              .filter((tip: unknown): tip is string => typeof tip === 'string' && tip.trim().length > 0)
+              .map((tip: string) => tip.trim())
+          : []
+      );
+      setActiveDay(1);
     } catch (err) {
       console.error('Failed to generate AI itinerary:', err);
+      setGenerateError(
+        err instanceof Error ? err.message : 'Không tạo được lịch trình. Vui lòng thử lại.'
+      );
     } finally {
       setIsGenerating(false);
     }
   };
 
   const currentDayData = itineraryDays.find(d => d.day === activeDay) || itineraryDays[0];
+
+  // Tổng quãng đường và dải độ cao suy ra từ chính lịch trình đang xem. Nếu để số cố định,
+  // lịch trình 5 ngày do AI tạo vẫn hiển thị "~350 km" của bản mẫu 3 ngày.
+  const totalKm = Math.round(itineraryDays.reduce((sum, d) => sum + (d.totalDistanceKm || 0), 0));
+  const elevations = itineraryDays
+    .flatMap(d => d.waypoints.map(wp => wp.elevationM))
+    .filter(value => typeof value === 'number' && !Number.isNaN(value));
+  const minElevationM = elevations.length ? Math.min(...elevations) : 0;
+  const maxElevationM = elevations.length ? Math.max(...elevations) : 0;
+
+  /**
+   * Lưu lịch trình đang xem vào tài khoản. Chưa đăng nhập thì `saveItinerary` tự mở hộp đăng
+   * nhập và trả về thất bại, nên ở đây chỉ cần hiển thị lỗi nếu có.
+   */
+  const handleSaveItinerary = async () => {
+    setSaveError(null);
+    setSaveState('saving');
+
+    const result = await saveItinerary({
+      title: customTitle,
+      overview,
+      totalKm,
+      travelMode,
+      vibe,
+      budgetLevel: budget,
+      days: itineraryDays
+    });
+
+    if (!result.success) {
+      setSaveState('idle');
+      setSaveError(result.error ?? 'Không lưu được lịch trình');
+      return;
+    }
+
+    setSaveState('saved');
+    setTimeout(() => setSaveState('idle'), 2500);
+  };
 
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
@@ -161,6 +272,21 @@ export const ItineraryPlanner: React.FC<ItineraryPlannerProps> = ({ onAskAI, onO
               <option value="adventure">⛰️ Chinh Phục Cung Đèo Hiểm Trở</option>
               <option value="chill">🌿 Thư Giãn, Suối Nước & Homestay Chill</option>
             </select>
+
+            {/* Mức ngân sách: trước đây bị khoá cứng ở 'comfort' vì không có UI để chọn,
+                dù server vẫn nhận và prompt vẫn có nhãn cho cả ba mức. */}
+            <label className="block text-xs font-semibold text-[#181c1c] uppercase tracking-wider mt-4 mb-2">
+              Mức Ngân Sách
+            </label>
+            <select
+              value={budget}
+              onChange={(e) => setBudget(e.target.value as typeof budget)}
+              className="w-full py-2.5 px-3 rounded-xl bg-[#f7faf8] border border-[#e0e3e1] text-xs font-medium text-[#181c1c] focus:outline-none focus:border-[#005c55]"
+            >
+              <option value="backpacker">🎒 Tiết Kiệm Kiểu Backpacker</option>
+              <option value="comfort">🛏️ Tiện Nghi Vừa Phải</option>
+              <option value="luxury">✨ Cao Cấp</option>
+            </select>
           </div>
 
           {/* Generate Button */}
@@ -204,6 +330,17 @@ export const ItineraryPlanner: React.FC<ItineraryPlannerProps> = ({ onAskAI, onO
             Áp Dụng
           </button>
         </div>
+
+        {/* Generation error surfaced from the server */}
+        {generateError && (
+          <div className="mt-4 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block">Không tạo được lịch trình AI</span>
+              <span className="text-red-800">{generateError}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Itinerary Viewer */}
@@ -217,19 +354,48 @@ export const ItineraryPlanner: React.FC<ItineraryPlannerProps> = ({ onAskAI, onO
               {customTitle}
             </h3>
             <p className="text-xs text-[#3e4947] leading-relaxed mb-4">
-              Lộ trình được thiết kế chuẩn khoa học, phân bổ thời gian nghỉ tại các trạm ngắm cảnh để giảm mỏi cơ và đảm bảo luôn về đến homestay trước khi trời sập tối.
+              {overview}
             </p>
 
             <div className="grid grid-cols-2 gap-2 text-xs text-[#181c1c] bg-[#f1f4f3] p-3 rounded-xl mb-4">
               <div>
                 <span className="text-[#6e7977] block text-[11px]">Tổng quãng đường</span>
-                <span className="font-semibold text-sm">~350 km</span>
+                <span className="font-semibold text-sm">~{totalKm.toLocaleString('vi-VN')} km</span>
               </div>
               <div>
                 <span className="text-[#6e7977] block text-[11px]">Độ cao dao động</span>
-                <span className="font-semibold text-sm">110m - 1,520m</span>
+                <span className="font-semibold text-sm">
+                  {minElevationM.toLocaleString('vi-VN')}m - {maxElevationM.toLocaleString('vi-VN')}m
+                </span>
               </div>
             </div>
+
+            {/* Lưu lịch trình vào tài khoản. Nút chỉ hiện khi đã đăng nhập — mời đăng nhập
+                bằng một nút "Lưu" rồi bật hộp thoại lên là kiểu dẫn dụ không cần thiết. */}
+            {isAuthenticated && (
+              <div className="mb-4">
+                <button
+                  onClick={handleSaveItinerary}
+                  disabled={saveState !== 'idle'}
+                  className="w-full py-2.5 px-4 rounded-xl border border-[#005c55] text-[#005c55] hover:bg-[#005c55] hover:text-white text-xs font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-[#005c55]"
+                >
+                  {saveState === 'saving' && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  {saveState === 'saved' && <Check className="w-4 h-4 text-emerald-600" />}
+                  {saveState === 'idle' && <BookmarkPlus className="w-4 h-4" />}
+                  <span>
+                    {saveState === 'saving'
+                      ? 'Đang lưu...'
+                      : saveState === 'saved'
+                        ? 'Đã lưu vào hồ sơ'
+                        : 'Lưu lịch trình'}
+                  </span>
+                </button>
+
+                {saveError && (
+                  <p className="mt-2 text-[11px] text-red-700 leading-relaxed">{saveError}</p>
+                )}
+              </div>
+            )}
 
             {/* Day Selector Buttons */}
             <div className="space-y-2">
@@ -283,6 +449,22 @@ export const ItineraryPlanner: React.FC<ItineraryPlannerProps> = ({ onAskAI, onO
             </div>
           )}
 
+          {/* Mẹo cho cả hành trình. Model vẫn luôn sinh dailyTips theo schema, trước đây
+              không hiển thị ở đâu nên coi như trả tiền token cho dữ liệu bỏ đi. */}
+          {dailyTips.length > 0 && (
+            <div className="bg-white rounded-2xl border border-[#e0e3e1] p-5 shadow-xs">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0051d5] mb-3">
+                <Sparkles className="w-4 h-4" />
+                <span>Mẹo Cho Cả Hành Trình</span>
+              </div>
+              <ul className="space-y-2 text-xs text-[#3e4947] leading-relaxed list-disc pl-4 marker:text-[#0051d5]">
+                {dailyTips.map((tip, idx) => (
+                  <li key={idx}>{tip}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
         </div>
 
         {/* Right Side: Timeline of Waypoints */}
@@ -292,13 +474,22 @@ export const ItineraryPlanner: React.FC<ItineraryPlannerProps> = ({ onAskAI, onO
             {/* Day Header Banner */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 mb-6 border-b border-[#e0e3e1] gap-3">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="px-2.5 py-1 rounded-md bg-[#005c55] text-white text-xs font-bold uppercase">
                     Ngày {currentDayData.day}
                   </span>
                   <span className="text-xs text-[#6e7977]">
                     {currentDayData.startPoint} &rarr; {currentDayData.endPoint}
                   </span>
+                  {onOpenMapToLocation && (
+                    <button
+                      onClick={() => onOpenMapToLocation(currentDayData.endPoint)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#0051d5] hover:underline"
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>Xem trên bản đồ</span>
+                    </button>
+                  )}
                 </div>
                 <h3 className="font-display text-2xl font-bold text-[#181c1c] mt-1.5">
                   {currentDayData.title}
@@ -306,6 +497,40 @@ export const ItineraryPlanner: React.FC<ItineraryPlannerProps> = ({ onAskAI, onO
                 <p className="text-xs text-[#3e4947] mt-0.5">
                   {currentDayData.theme}
                 </p>
+
+                {/* scenicRating và maxElevationM là trường required trong schema nhưng
+                    trước đây không được render ở bất kỳ đâu. */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2.5 text-xs text-[#6e7977]">
+                  {typeof currentDayData.scenicRating === 'number' && (
+                    <span className="inline-flex items-center gap-1">
+                      {Array.from({ length: 5 }, (_, starIdx) => (
+                        <Star
+                          key={starIdx}
+                          className={`w-3.5 h-3.5 ${
+                            starIdx < currentDayData.scenicRating
+                              ? 'fill-amber-400 text-amber-400'
+                              : 'text-[#bdc9c6]'
+                          }`}
+                        />
+                      ))}
+                      <span className="ml-0.5">Cảnh quan {currentDayData.scenicRating}/5</span>
+                    </span>
+                  )}
+
+                  {typeof currentDayData.maxElevationM === 'number' && (
+                    <span className="inline-flex items-center gap-1">
+                      <Mountain className="w-3.5 h-3.5 text-[#005c55]" />
+                      <span>Cao nhất {currentDayData.maxElevationM.toLocaleString('vi-VN')}m</span>
+                    </span>
+                  )}
+
+                  {typeof currentDayData.ridingHours === 'number' && (
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-[#005c55]" />
+                      <span>~{currentDayData.ridingHours}h lái</span>
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Weather Alert if any */}

@@ -1,66 +1,122 @@
-import React, { useState } from 'react';
-import { Destination } from '../types';
-import { 
-  Mountain, MapPin, Navigation, Compass, AlertCircle, 
-  Wind, Fuel, Coffee, ShieldAlert, Sparkles, ExternalLink,
-  ChevronRight, CloudSun
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Destination, MapWaypoint } from '../types';
+import { Mountain, Compass, ShieldAlert, Sparkles, ChevronRight, CloudSun } from 'lucide-react';
+import { ErrorState, LoadingState } from './LoadingState';
+import { useMapWaypoints } from '../hooks/useContent';
 
 interface HighlandsMapProps {
   destinations: Destination[];
   onSelectDestination: (dest: Destination) => void;
   onAskAI: (query: string) => void;
+  /** Tên địa danh cần chọn sẵn khi bản đồ được mở từ nơi khác, ví dụ từ một chặng lịch trình. */
+  focusLocation?: string;
 }
 
-interface MapWaypoint {
-  id: string;
-  name: string;
-  vietnamese: string;
-  km: number;
-  elevation: number;
-  x: number; // SVG coordinate
-  y: number;
-  type: 'city' | 'pass' | 'scenic' | 'water' | 'culture';
-  warning?: string;
-  destinationRef?: string;
+/** Tiền tố hành chính và từ nối không mang thông tin định danh địa điểm. */
+const NOISE_WORDS = new Set([
+  'thị', 'trấn', 'thành', 'phố', 'bản', 'làng', 'xã', 'huyện', 'khu',
+  'hoặc', 'hay', 'và', 'tại', 'town', 'city', 'village'
+]);
+
+function significantWords(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .split(/\s+/)
+    .filter(word => word.length >= 3 && !NOISE_WORDS.has(word));
 }
 
-const MAP_WAYPOINTS: MapWaypoint[] = [
-  { id: 'hg-city', name: 'Ha Giang City (Km 0)', vietnamese: 'TP Hà Giang (Km 0)', km: 0, elevation: 110, x: 120, y: 520, type: 'city' },
-  { id: 'bac-sum', name: 'Bac Sum Slope', vietnamese: 'Dốc Bắc Sum', km: 28, elevation: 850, x: 200, y: 460, type: 'pass', warning: 'Sương mù sáng sớm, độ dốc lớn' },
-  { id: 'quan-ba', name: 'Quan Ba Heaven Gate', vietnamese: 'Cổng Trời Quản Bạ', km: 46, elevation: 1500, x: 270, y: 410, type: 'scenic', destinationRef: 'quan-ba-heaven-gate' },
-  { id: 'yen-minh', name: 'Yen Minh Pine Forest', vietnamese: 'Rừng Thông Yên Minh', km: 85, elevation: 980, x: 390, y: 340, type: 'scenic', destinationRef: 'yen-minh-pine-forest' },
-  { id: 'tham-ma', name: 'Tham Ma Pass', vietnamese: 'Dốc Thẩm Mã', km: 115, elevation: 1100, x: 480, y: 260, type: 'pass', warning: '9 khúc cua tay áo liên tục', destinationRef: 'doc-tham-ma' },
-  { id: 'sung-la', name: 'Sung La Valley (Pao House)', vietnamese: 'Thung Lũng Sủng Là', km: 128, elevation: 1020, x: 550, y: 210, type: 'culture' },
-  { id: 'vuong-palace', name: 'H\'mong King Palace', vietnamese: 'Dinh Vua Mèo (Sà Phìn)', km: 138, elevation: 1150, x: 590, y: 170, type: 'culture' },
-  { id: 'lung-cu', name: 'Lung Cu Flag Point', vietnamese: 'Cột Cờ Lũng Cú & Lô Lô Chải', km: 160, elevation: 1470, x: 620, y: 90, type: 'culture', destinationRef: 'lung-cu-flagpole' },
-  { id: 'dong-van', name: 'Dong Van Old Quarter', vietnamese: 'Phố Cổ Đồng Văn', km: 145, elevation: 1050, x: 690, y: 180, type: 'city', destinationRef: 'dong-van-old-quarter' },
-  { id: 'ma-pi-leng', name: 'Ma Pi Leng Pass', vietnamese: 'Đèo Mã Pí Lèng', km: 155, elevation: 1520, x: 780, y: 280, type: 'pass', warning: 'Vực sâu hẻm Tu Sản, gió lớn', destinationRef: 'ma-pi-leng' },
-  { id: 'nho-que', name: 'Nho Que River Canyon', vietnamese: 'Bến Thuyền Sông Nho Quế', km: 165, elevation: 450, x: 830, y: 340, type: 'water', destinationRef: 'nho-que-river' },
-  { id: 'meo-vac', name: 'Meo Vac Town', vietnamese: 'Thị Trấn Mèo Vạc', km: 175, elevation: 850, x: 760, y: 410, type: 'city' },
-  { id: 'doc-chu-m', name: 'M Slope (Mau Due)', vietnamese: 'Dốc Cua Chữ M (Mậu Duệ)', km: 210, elevation: 1050, x: 660, y: 490, type: 'pass', warning: 'Khúc cua chữ M uốn lượn liên tiếp' },
-  { id: 'du-gia', name: 'Du Gia Waterfall', vietnamese: 'Bản Tiên & Thác Du Già', km: 260, elevation: 780, x: 520, y: 560, type: 'water', destinationRef: 'du-gia-waterfall' },
-  { id: 'thuan-hoa', name: 'Thuan Hoa Valley', vietnamese: 'Thung Lũng Thuận Hoà', km: 310, elevation: 350, x: 320, y: 550, type: 'scenic' }
-];
+/** Tỉ lệ từ khoá của một tên waypoint xuất hiện trong tên đang cần tra. */
+function matchScore(candidate: string, needle: string[]): number {
+  const keywords = significantWords(candidate);
+  if (keywords.length === 0) return 0;
 
-export const HighlandsMap: React.FC<HighlandsMapProps> = ({
+  const hits = keywords.filter(word => needle.includes(word)).length;
+  return hits / keywords.length;
+}
+
+/**
+ * Khớp một tên địa danh dạng tự do với waypoint trên bản đồ. Tên đến từ lịch trình do AI
+ * sinh ra nên không theo từ điển cố định — "Thị trấn Đồng Văn" và "Phố Cổ Đồng Văn" là
+ * cùng một chỗ — nên phải chấm điểm theo số từ khoá trùng nhau thay vì so khớp chuỗi con.
+ * Trả về null khi không đủ tin cậy, để bản đồ giữ nguyên điểm đang chọn thay vì nhảy sai.
+ */
+function findWaypoint(waypoints: MapWaypoint[], locationName: string): MapWaypoint | null {
+  const needle = significantWords(locationName);
+  if (needle.length === 0) return null;
+
+  let best: MapWaypoint | null = null;
+  let bestScore = 0;
+
+  for (const pt of waypoints) {
+    const score = Math.max(matchScore(pt.vietnamese, needle), matchScore(pt.name, needle));
+    if (score > bestScore) {
+      best = pt;
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 0.5 ? best : null;
+}
+
+/**
+ * Waypoint đến từ /api/content/map-waypoints (trước đây là một const trong file này). Phần
+ * tải dữ liệu tách ra vỏ ngoài để phần vẽ bản đồ luôn nhận được một mảng không rỗng — nếu
+ * không, `selectedPoint` sẽ phải nullable và hơn 300 dòng JSX bên dưới đầy kiểm tra null.
+ */
+export const HighlandsMap: React.FC<HighlandsMapProps> = (props) => {
+  const waypoints = useMapWaypoints();
+
+  if (waypoints.isLoading) return <LoadingState label="Đang tải bản đồ cung đường..." />;
+  if (waypoints.error) {
+    return <ErrorState message={waypoints.error} onRetry={waypoints.reload} />;
+  }
+
+  const points = waypoints.data ?? [];
+  if (points.length === 0) {
+    return (
+      <ErrorState
+        message="Database chưa có waypoint nào. Chạy `npm run db:seed` để nạp dữ liệu bản đồ."
+        onRetry={waypoints.reload}
+      />
+    );
+  }
+
+  return <HighlandsMapView {...props} waypoints={points} />;
+};
+
+const HighlandsMapView: React.FC<HighlandsMapProps & { waypoints: MapWaypoint[] }> = ({
   destinations,
   onSelectDestination,
-  onAskAI
+  onAskAI,
+  focusLocation = '',
+  waypoints
 }) => {
-  const [selectedPoint, setSelectedPoint] = useState<MapWaypoint>(MAP_WAYPOINTS[9]); // Default Ma Pi Leng
+  const [selectedPoint, setSelectedPoint] = useState<MapWaypoint>(
+    () => waypoints.find(pt => pt.id === 'ma-pi-leng') ?? waypoints[0]
+  );
   const [filterLayer, setFilterLayer] = useState<'all' | 'pass' | 'scenic' | 'water' | 'culture'>('all');
 
-  const filteredPoints = MAP_WAYPOINTS.filter(p => filterLayer === 'all' || p.type === filterLayer);
+  // Bản đồ mở từ một chặng lịch trình thì chọn sẵn waypoint tương ứng, và bỏ filter để
+  // chắc chắn điểm đó đang hiện trên canvas.
+  useEffect(() => {
+    const matched = findWaypoint(waypoints, focusLocation);
+    if (!matched) return;
+    setSelectedPoint(matched);
+    setFilterLayer('all');
+  }, [waypoints, focusLocation]);
+
+  const filteredPoints = waypoints.filter(p => filterLayer === 'all' || p.type === filterLayer);
 
   // SVG route path coordinates string
-  const routePathD = MAP_WAYPOINTS.map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ') + ' Z';
+  const routePathD = waypoints.map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ') + ' Z';
 
   const handlePointClick = (pt: MapWaypoint) => {
     setSelectedPoint(pt);
   };
 
   const matchedDest = destinations.find(d => d.id === selectedPoint.destinationRef);
+
 
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
@@ -354,7 +410,7 @@ export const HighlandsMap: React.FC<HighlandsMapProps> = ({
 
         {/* Profile Bars */}
         <div className="grid grid-cols-5 sm:grid-cols-10 lg:grid-cols-15 gap-1.5 items-end h-32 pt-4 border-b border-[#e0e3e1]">
-          {MAP_WAYPOINTS.map((pt) => {
+          {waypoints.map((pt) => {
             const heightPercent = Math.max(15, (pt.elevation / 1550) * 100);
             const isSelected = selectedPoint.id === pt.id;
             return (

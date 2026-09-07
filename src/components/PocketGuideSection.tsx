@@ -1,28 +1,72 @@
-import React, { useState, useEffect } from 'react';
-import { GEAR_CHECKLIST, HOMESTAYS, PASS_WEATHER_STATION } from '../data/hagiangData';
-import { GearItem } from '../types';
-import { 
-  ShieldCheck, CheckSquare, Square, AlertTriangle, 
-  Home, Phone, Star, DollarSign, HeartHandshake, CloudRain,
-  Bike, Calculator, Sparkles, Compass
+import React, { useEffect, useMemo, useState } from 'react';
+import type { GearItem, WeatherPassStatus } from '../types';
+import { useCostAssumptions, useGearChecklist, useHomestays } from '../hooks/useContent';
+import type { CostAssumptions } from '../hooks/useContent';
+import { ErrorState, LoadingState } from './LoadingState';
+import {
+  ShieldCheck, CheckSquare, Square, AlertTriangle, Home, Star,
+  HeartHandshake, CloudRain, Calculator, Sparkles
 } from 'lucide-react';
+
+/**
+ * Trạng thái tick của checklist vẫn ở localStorage, không đưa vào database: checklist phải
+ * dùng được khi chưa đăng nhập, và nó gắn với thiết bị người dùng đang đóng đồ hơn là với
+ * tài khoản.
+ *
+ * Điểm khác bản cũ: chỉ lưu **danh sách slug đã tick**, không lưu cả mảng GearItem. Trước
+ * đây lưu cả mảng nên khi danh mục trong database đổi (thêm món, sửa ghi chú), người dùng cũ
+ * vẫn thấy bản chụp cũ mãi mãi.
+ */
+const CHECKED_STORAGE_KEY = 'hagiang_gear_checked';
+
+/** null nghĩa là chưa từng lưu gì — khi đó dùng defaultChecked của danh mục. */
+function readCheckedSlugs(): string[] | null {
+  try {
+    const raw = localStorage.getItem(CHECKED_STORAGE_KEY);
+    if (raw === null) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Đơn giá tham khảo cho máy tính chi phí, đơn vị VNĐ. Trước đây các số này nằm rải rác
+ * ngay trong biểu thức tính nên không ai biết phải sửa ở đâu khi giá thay đổi. Đây là mặt
+ * bằng ước lượng tại thời điểm 09/2026 và sẽ lạc hậu — sửa ở đây là sửa cả bảng dự toán.
+ *
+ * Lưu ý: các con số này độc lập với `pricePerNight` của HOMESTAYS và với mức `budget`
+ * của trình lập lịch trình; ba nguồn giá trong ứng dụng hiện chưa được hợp nhất.
+ */
+/**
+ * Giá trị dự phòng khi chưa tải được đơn giá từ server. Giữ đúng bộ số đã dùng từ Vòng 2 để
+ * bảng dự toán vẫn hiển thị được con số hợp lý thay vì toàn số 0 trong lúc đang tải.
+ */
+const FALLBACK_COSTS: CostAssumptions = {
+  bikeRentPerDay: 180_000,
+  easyRiderPerDay: 900_000,
+  fuelPerDay: 100_000,
+  stayPerNight: { dorm: 150_000, private_room: 450_000, ecolodge: 900_000 },
+  foodPerDay: 300_000,
+  attractionTickets: 250_000,
+  busHanoiRoundTrip: 600_000
+};
 
 interface PocketGuideSectionProps {
   onAskAI: (query: string) => void;
+  /** Số liệu đèo tham khảo, App lấy một lần rồi truyền xuống (navbar cũng dùng). */
+  passWeather: WeatherPassStatus[];
 }
 
-export const PocketGuideSection: React.FC<PocketGuideSectionProps> = ({ onAskAI }) => {
-  const [gearList, setGearList] = useState<GearItem[]>(() => {
-    const saved = localStorage.getItem('hagiang_gear_checklist');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return GEAR_CHECKLIST;
-      }
-    }
-    return GEAR_CHECKLIST;
-  });
+export const PocketGuideSection: React.FC<PocketGuideSectionProps> = ({
+  onAskAI,
+  passWeather
+}) => {
+  const gearContent = useGearChecklist();
+  const homestayContent = useHomestays();
+  const costContent = useCostAssumptions();
+  const [checkedSlugs, setCheckedSlugs] = useState<string[] | null>(() => readCheckedSlugs());
 
   const [activeGuideTab, setActiveGuideTab] = useState<'checklist' | 'safety' | 'homestays' | 'budget'>('checklist');
 
@@ -31,24 +75,56 @@ export const PocketGuideSection: React.FC<PocketGuideSectionProps> = ({ onAskAI 
   const [riderType, setRiderType] = useState<'self_drive' | 'easy_rider'>('self_drive');
   const [stayStyle, setStayStyle] = useState<'dorm' | 'private_room' | 'ecolodge'>('private_room');
 
+  // Lần đầu dùng: lấy mặc định từ danh mục trong database.
   useEffect(() => {
-    localStorage.setItem('hagiang_gear_checklist', JSON.stringify(gearList));
-  }, [gearList]);
+    if (checkedSlugs === null && gearContent.data) {
+      setCheckedSlugs(gearContent.data.filter((item) => item.checked).map((item) => item.id));
+    }
+  }, [checkedSlugs, gearContent.data]);
+
+  useEffect(() => {
+    if (checkedSlugs) {
+      localStorage.setItem(CHECKED_STORAGE_KEY, JSON.stringify(checkedSlugs));
+    }
+  }, [checkedSlugs]);
+
+  const gearList: GearItem[] = useMemo(() => {
+    const catalog = gearContent.data ?? [];
+    if (!checkedSlugs) return catalog;
+
+    const checked = new Set(checkedSlugs);
+    return catalog.map((item) => ({ ...item, checked: checked.has(item.id) }));
+  }, [gearContent.data, checkedSlugs]);
 
   const toggleGearItem = (id: string) => {
-    setGearList(prev => prev.map(item => item.id === id ? { ...item, checked: !item.checked } : item));
+    setCheckedSlugs((current) => {
+      const next = new Set(current ?? []);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return [...next];
+    });
   };
 
   const checkedCount = gearList.filter(g => g.checked).length;
-  const progressPercent = Math.round((checkedCount / gearList.length) * 100);
+  const progressPercent = gearList.length
+    ? Math.round((checkedCount / gearList.length) * 100)
+    : 0;
 
-  // Calculate estimated budget in VND
-  const bikeCost = riderType === 'self_drive' ? tripDays * 180000 : tripDays * 900000;
-  const gasCost = riderType === 'self_drive' ? tripDays * 100000 : 0;
-  const stayCost = stayStyle === 'dorm' ? (tripDays - 1) * 150000 : stayStyle === 'private_room' ? (tripDays - 1) * 450000 : (tripDays - 1) * 900000;
-  const foodCost = tripDays * 300000;
-  const ticketCost = 250000; // Nho Que boat + Lung Cu + Vuong Palace
-  const busHanoiCost = 600000; // Roundtrip sleeper bus Hanoi - Ha Giang
+  // Dự toán chi phí một người, đơn vị VNĐ. Công thức PHẢI giữ khớp với estimateTripCost trong
+  // server/costs.ts — cùng một bộ đơn giá, cùng một cách tính, nên chatbot và máy tính này luôn
+  // ra cùng con số.
+  const COST_ASSUMPTIONS = costContent.data ?? FALLBACK_COSTS;
+  const nights = Math.max(0, tripDays - 1);
+  const bikeCost =
+    tripDays *
+    (riderType === 'self_drive'
+      ? COST_ASSUMPTIONS.bikeRentPerDay
+      : COST_ASSUMPTIONS.easyRiderPerDay);
+  const gasCost = riderType === 'self_drive' ? tripDays * COST_ASSUMPTIONS.fuelPerDay : 0;
+  const stayCost = nights * COST_ASSUMPTIONS.stayPerNight[stayStyle];
+  const foodCost = tripDays * COST_ASSUMPTIONS.foodPerDay;
+  const ticketCost = COST_ASSUMPTIONS.attractionTickets;
+  const busHanoiCost = COST_ASSUMPTIONS.busHanoiRoundTrip;
   const totalEstimatedCost = bikeCost + gasCost + stayCost + foodCost + ticketCost + busHanoiCost;
 
   return (
@@ -95,9 +171,17 @@ export const PocketGuideSection: React.FC<PocketGuideSectionProps> = ({ onAskAI 
       </div>
 
       {/* Tab Content 1: Checklist */}
-      {activeGuideTab === 'checklist' && (
+      {activeGuideTab === 'checklist' && gearContent.isLoading && (
+        <LoadingState label="Đang tải danh mục đồ mang theo..." />
+      )}
+
+      {activeGuideTab === 'checklist' && gearContent.error && (
+        <ErrorState message={gearContent.error} onRetry={gearContent.reload} />
+      )}
+
+      {activeGuideTab === 'checklist' && !gearContent.isLoading && !gearContent.error && (
         <div className="bg-white rounded-3xl border border-[#e0e3e1] p-6 sm:p-8 shadow-xs max-w-4xl mx-auto">
-          
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-[#e0e3e1]">
             <div>
               <h3 className="font-display text-xl font-bold text-[#181c1c]">
@@ -177,7 +261,70 @@ export const PocketGuideSection: React.FC<PocketGuideSectionProps> = ({ onAskAI 
       {/* Tab Content 2: Road Safety */}
       {activeGuideTab === 'safety' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
-          
+
+          {/* PASS_WEATHER_STATION trước đây được import nhưng không render ở đâu, và mỗi
+              trạm mang một chuỗi "Vừa cập nhật N phút trước" giả. Nay hiển thị thật kèm
+              đúng một lời cảnh báo rằng đây là số liệu tham khảo, không phải quan trắc. */}
+          <div className="bg-white rounded-3xl border border-[#e0e3e1] p-6 shadow-xs md:col-span-2">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h3 className="font-display text-lg font-bold text-[#181c1c]">
+                  Điều Kiện Các Đỉnh Đèo
+                </h3>
+                <p className="text-xs text-[#3e4947] mt-1 leading-relaxed">
+                  Số liệu tham khảo theo mùa khô, dùng để ước lượng khi chuẩn bị đồ. Ứng dụng
+                  chưa kết nối API thời tiết nên đây <strong className="font-semibold">không phải
+                  quan trắc thời gian thực</strong> — hãy kiểm tra dự báo trong ngày trước khi lên đèo.
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-[#0051d5]/10 text-[#0051d5] flex items-center justify-center shrink-0">
+                <CloudRain className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {passWeather.map((station) => (
+                <div
+                  key={station.location}
+                  className="bg-[#f7faf8] rounded-xl border border-[#e0e3e1] p-3.5"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs font-semibold text-[#181c1c] leading-snug">
+                      {station.location}
+                    </span>
+                    <span className="font-display text-lg font-bold text-[#005c55] shrink-0 leading-none">
+                      {station.temp}°C
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-[#3e4947] mt-1.5 leading-relaxed">
+                    {station.condition}
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-white border border-[#bdc9c6] text-[#3e4947]">
+                      {station.elevation.toLocaleString('vi-VN')}m
+                    </span>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-white border border-[#bdc9c6] text-[#3e4947]">
+                      Gió {station.windSpeedKm} km/h
+                    </span>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-900">
+                      {station.fogLevel}
+                    </span>
+                    <span
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border ${
+                        station.roadStatus === 'An toàn'
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                          : 'bg-amber-50 border-amber-200 text-amber-900'
+                      }`}
+                    >
+                      {station.roadStatus}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
           <div className="bg-white rounded-3xl border border-[#e0e3e1] p-6 shadow-xs">
             <div className="w-10 h-10 rounded-xl bg-red-100 text-red-700 flex items-center justify-center mb-4">
               <AlertTriangle className="w-5 h-5" />
@@ -235,67 +382,90 @@ export const PocketGuideSection: React.FC<PocketGuideSectionProps> = ({ onAskAI 
       )}
 
       {/* Tab Content 3: Homestays */}
-      {activeGuideTab === 'homestays' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
-          {HOMESTAYS.map((hs) => (
-            <div
-              key={hs.id}
-              className="bg-white rounded-3xl border border-[#e0e3e1] overflow-hidden shadow-xs hover:shadow-lg transition-all flex flex-col justify-between"
-            >
-              <div className="relative h-48 bg-[#2d3130]">
-                <img
-                  src={hs.imageUrl}
-                  alt={hs.name}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1">
-                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                  <span>{hs.rating} ({hs.reviewCount})</span>
-                </div>
-              </div>
+      {activeGuideTab === 'homestays' && homestayContent.isLoading && (
+        <LoadingState label="Đang tải danh sách homestay..." />
+      )}
 
-              <div className="p-5 flex-1 flex flex-col justify-between">
-                <div>
-                  <h4 className="font-display text-lg font-bold text-[#181c1c] mb-1">
-                    {hs.name}
-                  </h4>
-                  <p className="text-xs text-[#6e7977] mb-3">
-                    {hs.location}
-                  </p>
-                  <p className="text-xs text-[#3e4947] line-clamp-2 leading-relaxed mb-4">
-                    {hs.highlight}
-                  </p>
+      {activeGuideTab === 'homestays' && homestayContent.error && (
+        <ErrorState message={homestayContent.error} onRetry={homestayContent.reload} />
+      )}
 
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {hs.tags.map((t, idx) => (
-                      <span key={idx} className="text-[11px] bg-[#f1f4f3] text-[#005c55] font-medium px-2 py-0.5 rounded-md">
-                        {t}
-                      </span>
-                    ))}
+      {activeGuideTab === 'homestays' && !homestayContent.isLoading && !homestayContent.error && (
+        <div className="max-w-5xl mx-auto">
+          <p className="text-xs text-[#3e4947] bg-[#f1f4f3] border border-[#e0e3e1] rounded-xl p-3.5 mb-6 leading-relaxed">
+            Danh sách tham khảo để hình dung mức giá và phong cách lưu trú. Điểm đánh giá và
+            số lượt nhận xét là dữ liệu mẫu, chưa nối với hệ thống đặt phòng thật — hãy xác
+            nhận giá và tình trạng phòng trực tiếp với chủ nhà trước khi đi.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {(homestayContent.data ?? []).map((hs) => (
+              <div
+                key={hs.id}
+                className="bg-white rounded-3xl border border-[#e0e3e1] overflow-hidden shadow-xs hover:shadow-lg transition-all flex flex-col justify-between"
+              >
+                <div className="relative h-48 bg-[#2d3130]">
+                  <img
+                    src={hs.imageUrl}
+                    alt={hs.name}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-xs font-bold flex items-center gap-1">
+                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                    <span>{hs.rating} ({hs.reviewCount})</span>
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-[#e0e3e1] flex items-center justify-between">
+                <div className="p-5 flex-1 flex flex-col justify-between">
                   <div>
-                    <span className="text-[10px] text-[#6e7977] block">Giá chỉ từ</span>
-                    <span className="font-bold text-sm text-[#005c55]">
-                      {hs.pricePerNight.toLocaleString('vi-VN')} đ/đêm
-                    </span>
+                    <h4 className="font-display text-lg font-bold text-[#181c1c] mb-1">
+                      {hs.name}
+                    </h4>
+                    <p className="text-xs text-[#6e7977] mb-3">
+                      {hs.location}
+                    </p>
+                    <p className="text-xs text-[#3e4947] line-clamp-2 leading-relaxed mb-4">
+                      {hs.highlight}
+                    </p>
+
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                      {hs.tags.map((t, idx) => (
+                        <span key={idx} className="text-[11px] bg-[#f1f4f3] text-[#005c55] font-medium px-2 py-0.5 rounded-md">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
                   </div>
 
-                  <a
-                    href={`tel:${hs.phone.replace(/\s/g, '')}`}
-                    className="px-3.5 py-2 rounded-xl bg-[#005c55] hover:bg-[#0f766e] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                  >
-                    <Phone className="w-3.5 h-3.5" />
-                    <span>Gọi {hs.phone}</span>
-                  </a>
-                </div>
+                  <div className="pt-4 border-t border-[#e0e3e1] flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-[#6e7977] block">Giá chỉ từ</span>
+                      <span className="font-bold text-sm text-[#005c55]">
+                        {hs.pricePerNight.toLocaleString('vi-VN')} đ/đêm
+                      </span>
+                    </div>
 
+                    {/* Trước đây là link tel: tới một số điện thoại bịa — bấm vào là gọi
+                        thật vào số không tồn tại. Thay bằng đường hỏi AI, và trường phone
+                        đã được xoá khỏi HomestaySpot. */}
+                    <button
+                      onClick={() =>
+                        onAskAI(
+                          `Tư vấn về ${hs.name} tại ${hs.location}: cách liên hệ đặt phòng, giá thực tế theo mùa và kinh nghiệm lưu trú ở đây`
+                        )
+                      }
+                      className="px-3.5 py-2 rounded-xl bg-[#005c55] hover:bg-[#0f766e] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Hỏi AI về chỗ này</span>
+                    </button>
+                  </div>
+
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
@@ -365,29 +535,29 @@ export const PocketGuideSection: React.FC<PocketGuideSectionProps> = ({ onAskAI 
           <div className="bg-[#f7faf8] rounded-2xl p-5 border border-[#e0e3e1] mb-6 space-y-3 text-xs">
             <div className="flex justify-between text-[#3e4947]">
               <span>Xe giường nằm khứ hồi Hà Nội - Hà Giang:</span>
-              <span className="font-semibold text-[#181c1c]">{busHanoiCost.toLocaleString()} đ</span>
+              <span className="font-semibold text-[#181c1c]">{busHanoiCost.toLocaleString('vi-VN')} đ</span>
             </div>
             <div className="flex justify-between text-[#3e4947]">
               <span>Chi phí thuê xe máy / Easy rider ({tripDays} ngày):</span>
-              <span className="font-semibold text-[#181c1c]">{bikeCost.toLocaleString()} đ</span>
+              <span className="font-semibold text-[#181c1c]">{bikeCost.toLocaleString('vi-VN')} đ</span>
             </div>
             {gasCost > 0 && (
               <div className="flex justify-between text-[#3e4947]">
                 <span>Tiền xăng xe ({tripDays} ngày):</span>
-                <span className="font-semibold text-[#181c1c]">{gasCost.toLocaleString()} đ</span>
+                <span className="font-semibold text-[#181c1c]">{gasCost.toLocaleString('vi-VN')} đ</span>
               </div>
             )}
             <div className="flex justify-between text-[#3e4947]">
               <span>Tiền phòng Homestay ({tripDays - 1} đêm):</span>
-              <span className="font-semibold text-[#181c1c]">{stayCost.toLocaleString()} đ</span>
+              <span className="font-semibold text-[#181c1c]">{stayCost.toLocaleString('vi-VN')} đ</span>
             </div>
             <div className="flex justify-between text-[#3e4947]">
               <span>Tiền ăn uống đặc sản ({tripDays} ngày):</span>
-              <span className="font-semibold text-[#181c1c]">{foodCost.toLocaleString()} đ</span>
+              <span className="font-semibold text-[#181c1c]">{foodCost.toLocaleString('vi-VN')} đ</span>
             </div>
             <div className="flex justify-between text-[#3e4947]">
               <span>Vé thuyền Nho Quế, Cột Cờ Lũng Cú & Dinh Vua Mèo:</span>
-              <span className="font-semibold text-[#181c1c]">{ticketCost.toLocaleString()} đ</span>
+              <span className="font-semibold text-[#181c1c]">{ticketCost.toLocaleString('vi-VN')} đ</span>
             </div>
           </div>
 
@@ -403,7 +573,7 @@ export const PocketGuideSection: React.FC<PocketGuideSectionProps> = ({ onAskAI 
             </div>
 
             <button
-              onClick={() => onAskAI(`Tư vấn cách tối ưu chi phí cho chuyến đi Hà Giang ${tripDays} ngày với mức ngân sách khoảng ${totalEstimatedCost.toLocaleString()}đ`)}
+              onClick={() => onAskAI(`Tư vấn cách tối ưu chi phí cho chuyến đi Hà Giang ${tripDays} ngày với mức ngân sách khoảng ${totalEstimatedCost.toLocaleString('vi-VN')}đ`)}
               className="px-5 py-3 rounded-xl bg-white text-[#005c55] hover:bg-emerald-50 text-xs font-bold shadow-md transition-colors flex items-center gap-2"
             >
               <Sparkles className="w-4 h-4 text-[#005c55]" />

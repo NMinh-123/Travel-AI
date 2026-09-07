@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Destination } from '../types';
-import { 
-  X, Mountain, MapPin, Clock, ShieldAlert, Utensils, 
-  Sparkles, Compass, CheckCircle2, ChevronLeft, ChevronRight, Wind
+import {
+  X, Mountain, ShieldAlert, Utensils, Sparkles, CheckCircle2,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 interface DestinationDetailModalProps {

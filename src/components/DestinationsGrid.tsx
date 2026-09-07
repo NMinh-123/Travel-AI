@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Destination } from '../types';
-import { Mountain, Compass, ShieldAlert, Sparkles, MapPin, Clock, Utensils, Search, Heart } from 'lucide-react';
+import { Mountain, Compass, Sparkles, Clock, Search, Heart } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface DestinationsGridProps {

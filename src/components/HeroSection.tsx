@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Compass, MapPin, ShieldAlert, ArrowRight, Camera, Mountain, Wind } from 'lucide-react';
+import { Sparkles, Compass, MapPin, ArrowRight, Camera, Mountain } from 'lucide-react';
 import { Destination } from '../types';
 
 interface HeroSectionProps {
@@ -90,7 +90,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           </div>
 
           <div className="flex flex-col border-l border-white/10 pl-4 sm:pl-6">
-            <span className="font-display text-2xl sm:text-3xl font-bold text-[#80d5cb]">1,520 m</span>
+            <span className="font-display text-2xl sm:text-3xl font-bold text-[#80d5cb]">1.520 m</span>
             <span className="text-xs text-[#bdc9c6] tracking-wide mt-0.5 font-medium">Đỉnh Mã Pí Lèng</span>
           </div>
 
