@@ -1,0 +1,34 @@
+# Postgres cho môi trường phát triển. Chỉ mở cổng ra localhost để không phơi DB ra mạng LAN.
+#
+#   docker compose up -d db     # khởi động
+#   docker compose down         # dừng, giữ dữ liệu
+#   docker compose down -v      # dừng và xoá sạch dữ liệu
+services:
+  db:
+    # pgvector/pgvector thay vì postgres chính thức: migration
+    # 20260906000000_chat_and_knowledge chạy CREATE EXTENSION "vector" cho cột embedding của
+    # KnowledgeDoc, và ảnh postgres gốc không có extension đó.
+    #
+    # Ảnh pgvector chính thức dựa trên Debian, không có biến thể alpine — đây là lý do tag đổi
+    # từ 16-alpine sang pg16. Đổi ảnh lúc này không mất dữ liệu vì volume travel-ai-pgdata vẫn
+    # rỗng (DB chưa từng chạy). Nếu sau này đã có dữ liệu thì đổi ảnh là việc khác hẳn: phải
+    # dump, đổi, restore.
+    image: pgvector/pgvector:pg16
+    container_name: travel-ai-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: travel
+      POSTGRES_PASSWORD: travel
+      POSTGRES_DB: travelai
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - travel-ai-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U travel -d travelai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  travel-ai-pgdata:

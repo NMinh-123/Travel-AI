@@ -1,4 +1,24 @@
-import { Destination, DayItinerary, WeatherPassStatus, GearItem, HomestaySpot } from '../types';
+// Dữ liệu nguồn để nạp vào database. Trước đây file này nằm ở src/data/hagiangData.ts và
+// được các component import trực tiếp; nay frontend đọc qua /api/content/* nên nó chỉ còn
+// là đầu vào của prisma/seed.ts.
+//
+// Sửa nội dung Hà Giang ở đây rồi chạy `npm run db:seed` — seed dùng upsert theo slug nên
+// chạy lại nhiều lần không nhân bản dữ liệu.
+import {
+  Destination,
+  DayItinerary,
+  WeatherPassStatus,
+  GearItem,
+  HomestaySpot,
+  MapWaypoint
+} from '../src/types';
+
+export interface PresetItinerarySeed {
+  slug: string;
+  title: string;
+  overview: string;
+  days: DayItinerary[];
+}
 
 export const DESTINATIONS: Destination[] = [
   {
@@ -21,11 +41,6 @@ export const DESTINATIONS: Destination[] = [
     description: 'Được mệnh danh là một trong "Tứ đại đỉnh đèo" của núi rừng Tây Bắc, dài khoảng 20km nối liền Đồng Văn và Mèo Vạc. Đứng trên đỉnh đèo, du khách sẽ choáng ngợp trước hẻm vực Tu Sản sâu 800m cùng dòng Nho Quế màu ngọc lam uốn lượn dưới chân.',
     safetyTip: 'Đường đèo có nhiều khúc cua tay áo và vực sâu không rào chắn phụ. Hãy đi số thấp (số 2 hoặc số 1 khi xuống dốc), không bóp phanh liên tục và tránh vượt xe tải ở khúc cua mù.',
     coordinates: { x: 740, y: 390, lat: 23.2394, lng: 105.4168 },
-    weatherTag: {
-      temp: 18,
-      condition: 'Nắng nhẹ, gió đại ngàn',
-      fogRisk: 'Trung bình'
-    },
     recommendedStayHours: 3.5,
     localFood: ['Bánh tam giác mạch nướng than', 'Ngô nướng mật mía', 'Cà phê view đèo Panorama']
   },
@@ -48,11 +63,6 @@ export const DESTINATIONS: Destination[] = [
     description: 'Bắt nguồn từ vùng núi Vân Nam (Trung Quốc), chảy qua hẻm Tu Sản tạo nên tuyệt tác thiên nhiên hùng vĩ bậc nhất cao nguyên đá. Du khách có thể đi xe ôm của người bản địa xuống bến thuyền Tà Làng để trải nghiệm đi thuyền.',
     safetyTip: 'Đoạn đường dốc xuống bến Tà Làng cực kỳ dốc và quanh co. Khuyến nghị thuê dịch vụ xe ôm bản địa tay lái cứng đưa đón (giá khoảng 100k - 150k/khứ hồi).',
     coordinates: { x: 790, y: 440, lat: 23.2201, lng: 105.4356 },
-    weatherTag: {
-      temp: 22,
-      condition: 'Nắng ấm trong lòng hẻm',
-      fogRisk: 'Thấp'
-    },
     recommendedStayHours: 2.5,
     localFood: ['Cá suối nướng muối ớt', 'Thịt treo gác bếp']
   },
@@ -75,11 +85,6 @@ export const DESTINATIONS: Destination[] = [
     description: 'Tọa lạc trên đỉnh núi Rồng (Long Sơn), Cột cờ Lũng Cú là biểu tượng chủ quyền thiêng liêng. Dưới chân cột cờ là làng cổ Lô Lô Chải xinh đẹp như bước ra từ truyện cổ tích với tường đất vàng, hoa đào, hoa cải rực rỡ.',
     safetyTip: 'Gió trên đỉnh núi Rồng khá mạnh. Đường từ Đồng Văn lên Lũng Cú quanh co nhưng chất lượng mặt đường tốt.',
     coordinates: { x: 620, y: 150, lat: 23.3639, lng: 105.3186 },
-    weatherTag: {
-      temp: 16,
-      condition: 'Gió lộng, se lạnh',
-      fogRisk: 'Trung bình'
-    },
     recommendedStayHours: 3.0,
     localFood: ['Thắng dền nóng hổi', 'Thịt lợn đen nướng mắc khén', 'Trà shan tuyết cổ thụ']
   },
@@ -190,9 +195,13 @@ export const DESTINATIONS: Destination[] = [
   }
 ];
 
-export const PRESET_ITINERARIES: DayItinerary[][] = [
-  // 3 Days 2 Nights Classic Loop
-  [
+export const PRESET_ITINERARIES: PresetItinerarySeed[] = [
+  {
+    slug: '3n2d-ma-pi-leng-du-gia',
+    title: 'Lịch Trình Vòng Cung 3N2Đ: Mã Pí Lèng & Du Già Hoang Sơ',
+    overview:
+      'Lộ trình được thiết kế chuẩn khoa học, phân bổ thời gian nghỉ tại các trạm ngắm cảnh để giảm mỏi cơ và đảm bảo luôn về đến homestay trước khi trời sập tối.',
+    days: [
     {
       day: 1,
       title: 'Chinh phục Cổng Trời Quản Bạ & Thung lũng Yên Minh',
@@ -409,7 +418,8 @@ export const PRESET_ITINERARIES: DayItinerary[][] = [
         priceEstimate: '250.000đ - 450.000đ'
       }
     }
-  ]
+    ]
+  }
 ];
 
 export const PASS_WEATHER_STATION: WeatherPassStatus[] = [
@@ -420,8 +430,7 @@ export const PASS_WEATHER_STATION: WeatherPassStatus[] = [
     condition: 'Nắng nhẹ, gió đại ngàn 18km/h',
     windSpeedKm: 18,
     fogLevel: 'Quang đãng',
-    roadStatus: 'An toàn',
-    updatedAt: 'Vừa cập nhật 5 phút trước'
+    roadStatus: 'An toàn'
   },
   {
     location: 'Cổng Trời Quản Bạ',
@@ -430,8 +439,7 @@ export const PASS_WEATHER_STATION: WeatherPassStatus[] = [
     condition: 'Sương mù mây trôi thung lũng',
     windSpeedKm: 14,
     fogLevel: 'Sương mù nhẹ',
-    roadStatus: 'Lưu ý cua dốc',
-    updatedAt: 'Vừa cập nhật 12 phút trước'
+    roadStatus: 'Lưu ý cua dốc'
   },
   {
     location: 'Dốc Thẩm Mã (Yên Minh)',
@@ -440,8 +448,7 @@ export const PASS_WEATHER_STATION: WeatherPassStatus[] = [
     condition: 'Trời quang, tầm nhìn xa > 10km',
     windSpeedKm: 9,
     fogLevel: 'Quang đãng',
-    roadStatus: 'An toàn',
-    updatedAt: 'Vừa cập nhật 18 phút trước'
+    roadStatus: 'An toàn'
   },
   {
     location: 'Cột Cờ Cực Bắc Lũng Cú',
@@ -450,8 +457,7 @@ export const PASS_WEATHER_STATION: WeatherPassStatus[] = [
     condition: 'Gió mạnh cấp 4, se lạnh',
     windSpeedKm: 26,
     fogLevel: 'Quang đãng',
-    roadStatus: 'An toàn',
-    updatedAt: 'Vừa cập nhật 2 phút trước'
+    roadStatus: 'An toàn'
   },
   {
     location: 'Thác Nước Du Già',
@@ -460,8 +466,7 @@ export const PASS_WEATHER_STATION: WeatherPassStatus[] = [
     condition: 'Nắng ráo ấm áp, nước suối trong xanh',
     windSpeedKm: 6,
     fogLevel: 'Quang đãng',
-    roadStatus: 'Đường ướt trơn',
-    updatedAt: 'Vừa cập nhật 8 phút trước'
+    roadStatus: 'Đường ướt trơn'
   }
 ];
 
@@ -488,8 +493,7 @@ export const HOMESTAYS: HomestaySpot[] = [
     reviewCount: 284,
     imageUrl: 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?q=80&w=800&auto=format&fit=crop',
     tags: ['Nhà trình tường cổ', 'Dưới chân cột cờ', 'Gần Cà phê Cực Bắc', 'Sưởi củi'],
-    highlight: 'Nếp nhà đất vàng 100 năm tuổi của người Lô Lô, không gian cổ tích yên bình.',
-    phone: '0984 223 889'
+    highlight: 'Nếp nhà đất vàng 100 năm tuổi của người Lô Lô, không gian cổ tích yên bình.'
   },
   {
     id: 'hs-2',
@@ -500,8 +504,7 @@ export const HOMESTAYS: HomestaySpot[] = [
     reviewCount: 340,
     imageUrl: 'https://images.unsplash.com/photo-1528127269322-539801943592?q=80&w=800&auto=format&fit=crop',
     tags: ['View Hẻm Tu Sản', 'Làng văn hoá Pả Vi', 'Phòng tắm kính view núi'],
-    highlight: 'Ngắm biển mây sớm tràn qua thung lũng Pả Vi ngay từ ban công phòng ngủ.',
-    phone: '0912 345 678'
+    highlight: 'Ngắm biển mây sớm tràn qua thung lũng Pả Vi ngay từ ban công phòng ngủ.'
   },
   {
     id: 'hs-3',
@@ -512,8 +515,7 @@ export const HOMESTAYS: HomestaySpot[] = [
     reviewCount: 198,
     imageUrl: 'https://images.unsplash.com/photo-1432405972618-c60b0225b8f9?q=80&w=800&auto=format&fit=crop',
     tags: ['Gần thác Ba Tiên', 'Ăn tối mâm cơm người Tày', 'Tắm suối', 'Nhạc sống'],
-    highlight: 'Nhà sàn gỗ lim truyền thống bên bờ suối róc rách, tiệc nướng đầm ấm.',
-    phone: '0977 123 456'
+    highlight: 'Nhà sàn gỗ lim truyền thống bên bờ suối róc rách, tiệc nướng đầm ấm.'
   },
   {
     id: 'hs-4',
@@ -524,7 +526,28 @@ export const HOMESTAYS: HomestaySpot[] = [
     reviewCount: 412,
     imageUrl: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=800&auto=format&fit=crop',
     tags: ['Trung tâm phố cổ', 'Tiệm cà phê acoustic', 'Hỗ trợ sửa xe & phượt'],
-    highlight: 'Đi bộ 3 phút ra chợ phiên và phố cổ Đồng Văn, không gian phượt thủ thân thiện.',
-    phone: '0966 888 999'
+    highlight: 'Đi bộ 3 phút ra chợ phiên và phố cổ Đồng Văn, không gian phượt thủ thân thiện.'
   }
+];
+
+/**
+ * 15 điểm trên bản đồ SVG. Toạ độ x/y là hệ toạ độ của canvas 950x650 trong HighlandsMap,
+ * đặt tay chứ không suy ra từ lat/lng — đổi kích thước canvas thì phải đặt lại.
+ */
+export const MAP_WAYPOINTS: MapWaypoint[] = [
+  { id: 'hg-city', name: 'Ha Giang City (Km 0)', vietnamese: 'TP Hà Giang (Km 0)', km: 0, elevation: 110, x: 120, y: 520, type: 'city' },
+  { id: 'bac-sum', name: 'Bac Sum Slope', vietnamese: 'Dốc Bắc Sum', km: 28, elevation: 850, x: 200, y: 460, type: 'pass', warning: 'Sương mù sáng sớm, độ dốc lớn' },
+  { id: 'quan-ba', name: 'Quan Ba Heaven Gate', vietnamese: 'Cổng Trời Quản Bạ', km: 46, elevation: 1500, x: 270, y: 410, type: 'scenic', destinationRef: 'quan-ba-heaven-gate' },
+  { id: 'yen-minh', name: 'Yen Minh Pine Forest', vietnamese: 'Rừng Thông Yên Minh', km: 85, elevation: 980, x: 390, y: 340, type: 'scenic', destinationRef: 'yen-minh-pine-forest' },
+  { id: 'tham-ma', name: 'Tham Ma Pass', vietnamese: 'Dốc Thẩm Mã', km: 115, elevation: 1100, x: 480, y: 260, type: 'pass', warning: '9 khúc cua tay áo liên tục', destinationRef: 'doc-tham-ma' },
+  { id: 'sung-la', name: 'Sung La Valley (Pao House)', vietnamese: 'Thung Lũng Sủng Là', km: 128, elevation: 1020, x: 550, y: 210, type: 'culture' },
+  { id: 'vuong-palace', name: 'H\'mong King Palace', vietnamese: 'Dinh Vua Mèo (Sà Phìn)', km: 138, elevation: 1150, x: 590, y: 170, type: 'culture' },
+  { id: 'lung-cu', name: 'Lung Cu Flag Point', vietnamese: 'Cột Cờ Lũng Cú & Lô Lô Chải', km: 160, elevation: 1470, x: 620, y: 90, type: 'culture', destinationRef: 'lung-cu-flagpole' },
+  { id: 'dong-van', name: 'Dong Van Old Quarter', vietnamese: 'Phố Cổ Đồng Văn', km: 145, elevation: 1050, x: 690, y: 180, type: 'city', destinationRef: 'dong-van-old-quarter' },
+  { id: 'ma-pi-leng', name: 'Ma Pi Leng Pass', vietnamese: 'Đèo Mã Pí Lèng', km: 155, elevation: 1520, x: 780, y: 280, type: 'pass', warning: 'Vực sâu hẻm Tu Sản, gió lớn', destinationRef: 'ma-pi-leng' },
+  { id: 'nho-que', name: 'Nho Que River Canyon', vietnamese: 'Bến Thuyền Sông Nho Quế', km: 165, elevation: 450, x: 830, y: 340, type: 'water', destinationRef: 'nho-que-river' },
+  { id: 'meo-vac', name: 'Meo Vac Town', vietnamese: 'Thị Trấn Mèo Vạc', km: 175, elevation: 850, x: 760, y: 410, type: 'city' },
+  { id: 'doc-chu-m', name: 'M Slope (Mau Due)', vietnamese: 'Dốc Cua Chữ M (Mậu Duệ)', km: 210, elevation: 1050, x: 660, y: 490, type: 'pass', warning: 'Khúc cua chữ M uốn lượn liên tiếp' },
+  { id: 'du-gia', name: 'Du Gia Waterfall', vietnamese: 'Bản Tiên & Thác Du Già', km: 260, elevation: 780, x: 520, y: 560, type: 'water', destinationRef: 'du-gia-waterfall' },
+  { id: 'thuan-hoa', name: 'Thuan Hoa Valley', vietnamese: 'Thung Lũng Thuận Hoà', km: 310, elevation: 350, x: 320, y: 550, type: 'scenic' }
 ];

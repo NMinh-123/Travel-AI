@@ -1,0 +1,469 @@
+// Tầng dữ liệu của Travel AI Hà Giang.
+//
+// Ba nhóm model tách biệt:
+//   1. Người dùng & auth  — User, Favorite, UserBadge, SavedItinerary
+//   2. Nội dung Hà Giang  — Destination, MapWaypoint, Homestay, GearItem,
+//                            PassWeather, PresetItinerary
+//   3. Chatbot            — KnowledgeDoc (kho tri thức RAG), ChatSession,
+//                            ChatMessage, ChatEscalation
+//
+// Nội dung Hà Giang trước đây là file tĩnh src/data/hagiangData.ts; nay nằm ở đây và được
+// nạp bằng prisma/seed.ts. Mọi bảng nội dung đều có `slug` để frontend tham chiếu bằng id
+// bền vững ('ma-pi-leng') thay vì id sinh tự động, và `sortOrder` để giữ đúng thứ tự hiển
+// thị vốn có của mảng gốc.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Người dùng & auth
+// ---------------------------------------------------------------------------
+
+enum Provider {
+  EMAIL
+  GOOGLE
+}
+
+/// Lưu dạng mã, map sang nhãn tiếng Việt trong server/mappers.ts để src/types.ts
+/// không phải đổi và các component không phải sửa theo.
+enum RiderLevel {
+  BEGINNER
+  EXPERIENCED
+  VETERAN
+  EASY_RIDER
+}
+
+model User {
+  id     String @id @default(cuid())
+  email  String @unique
+  name   String
+  avatar String
+
+  /// Null với tài khoản đăng nhập bằng Google — những tài khoản đó không có mật khẩu.
+  passwordHash String?
+  provider     Provider @default(EMAIL)
+  googleId     String?  @unique
+
+  phone      String?
+  riderLevel RiderLevel?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  favorites        Favorite[]
+  badges           UserBadge[]
+  savedItineraries SavedItinerary[]
+  chatSessions     ChatSession[]
+
+  @@index([provider])
+}
+
+/// Tham chiếu Destination.slug thay vì khoá ngoại: slug là thứ frontend gửi lên, và giữ
+/// được bản ghi yêu thích kể cả khi một điểm đến tạm thời bị rút khỏi danh mục.
+model Favorite {
+  id              String   @id @default(cuid())
+  userId          String
+  destinationSlug String
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, destinationSlug])
+  @@index([userId])
+}
+
+model UserBadge {
+  id       String   @id @default(cuid())
+  userId   String
+  label    String
+  earnedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, label])
+  @@index([userId])
+}
+
+/// `days` là DayItinerary[] dạng JSON. Cấu trúc ngày -> waypoint chỉ được đọc trọn khối,
+/// không có nhu cầu truy vấn từng waypoint, nên chuẩn hoá thành hai bảng nữa không đổi
+/// được gì về khả năng truy vấn.
+model SavedItinerary {
+  id       String @id @default(cuid())
+  userId   String
+  title    String
+  overview String
+  totalKm  Int
+
+  travelMode  String?
+  vibe        String?
+  budgetLevel String?
+
+  days      Json
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Nội dung Hà Giang
+// ---------------------------------------------------------------------------
+
+enum DestinationCategory {
+  pass
+  nature
+  culture
+  viewpoint
+  waterfall
+  homestay
+}
+
+model Destination {
+  id             String              @id @default(cuid())
+  slug           String              @unique
+  name           String
+  vietnameseName String
+  district       String
+  category       DestinationCategory
+
+  elevation         Int
+  distanceFromStart Int
+  /// Nhãn tiếng Việt có dấu và có khoảng trắng nên không dùng enum được.
+  difficulty        String
+  bestTime          String
+
+  highlights  String[]
+  imageUrl    String
+  gallery     String[]
+  description String
+  safetyTip   String
+
+  coordX Int
+  coordY Int
+  lat    Float
+  lng    Float
+
+  recommendedStayHours Float
+  localFood            String[]
+
+  sortOrder Int
+
+  @@index([category])
+}
+
+enum WaypointType {
+  city
+  pass
+  scenic
+  water
+  culture
+}
+
+/// 15 điểm trên bản đồ SVG. Trước đây là const MAP_WAYPOINTS ngay trong HighlandsMap.tsx.
+model MapWaypoint {
+  id         String       @id @default(cuid())
+  slug       String       @unique
+  name       String
+  vietnamese String
+  km         Int
+  elevation  Int
+  x          Int
+  y          Int
+  type       WaypointType
+
+  warning        String?
+  /// Trỏ tới Destination.slug khi waypoint này có trang chi tiết tương ứng.
+  destinationRef String?
+
+  sortOrder Int
+}
+
+model Homestay {
+  id       String @id @default(cuid())
+  slug     String @unique
+  name     String
+  location String
+
+  pricePerNight Int
+  /// rating và reviewCount hiện là dữ liệu mẫu, chưa nối nguồn đánh giá thật.
+  rating        Float
+  reviewCount   Int
+
+  imageUrl  String
+  tags      String[]
+  highlight String
+
+  sortOrder Int
+}
+
+enum GearCategory {
+  safety
+  clothing
+  electronics
+  medical
+  documents
+}
+
+/// Chỉ là danh mục. Trạng thái tick của từng người vẫn ở localStorage để dùng được mà
+/// không cần đăng nhập, nên ở đây chỉ có giá trị mặc định.
+model GearItem {
+  id       String       @id @default(cuid())
+  slug     String       @unique
+  name     String
+  category GearCategory
+
+  recommended    Boolean
+  defaultChecked Boolean
+  note           String
+
+  sortOrder Int
+}
+
+/// Số liệu tham khảo theo mùa, KHÔNG phải quan trắc thời gian thực. Trường updatedAt cũ
+/// ("Vừa cập nhật 5 phút trước") đã bị bỏ vì nó tạo cảm giác dữ liệu tươi một cách giả tạo.
+model PassWeather {
+  id          String @id @default(cuid())
+  slug        String @unique
+  location    String
+  elevation   Int
+  temp        Int
+  condition   String
+  windSpeedKm Int
+  fogLevel    String
+  roadStatus  String
+
+  sortOrder Int
+}
+
+model PresetItinerary {
+  id       String @id @default(cuid())
+  slug     String @unique
+  title    String
+  overview String
+  totalKm  Int
+
+  /// DayItinerary[] dạng JSON, cùng lý do như SavedItinerary.days.
+  days Json
+
+  sortOrder Int
+}
+
+// ---------------------------------------------------------------------------
+// Kho tri thức chatbot (RAG)
+// ---------------------------------------------------------------------------
+
+/// Phân loại tài liệu theo SRS Mục 11.4.3. `tour_desc` chưa dùng ở giai đoạn này (chưa có
+/// sản phẩm tour), giữ trong enum để không phải migrate khi Giai đoạn 2 thêm danh mục tour.
+enum KnowledgeDocType {
+  faq
+  policy
+  destination
+  tour_desc
+}
+
+/// Trạng thái duyệt. Chỉ đoạn APPROVED được đưa vào ngữ cảnh trả lời — SRS yêu cầu chatbot
+/// chỉ nói trong phạm vi tri thức "đã được kiểm duyệt" (FR-BOT-05).
+enum KnowledgeStatus {
+  DRAFT
+  APPROVED
+  ARCHIVED
+}
+
+/// Phạm vi không gian của một đoạn tri thức.
+///
+/// Hai tầng chứ không phải phân mảnh phẳng theo địa danh, vì phần lớn tri thức KHÔNG gắn với một
+/// địa danh nào: giấy tờ khu vực biên giới, bằng lái, sạt lở mùa mưa, ứng xử khi vào bản đều áp
+/// cho cả địa bàn. Đo trên kho hiện tại, 23/31 đoạn thuộc loại này. Lọc cứng theo địa danh sẽ
+/// giết đúng nhóm đó, nên đoạn PROVINCE luôn được xét bất kể khách hỏi về nơi nào.
+enum KnowledgeScope {
+  PROVINCE
+  PLACE
+}
+
+/// Loại địa danh. PROVINCE là cả địa bàn, TOWN là nơi dừng nghỉ, SITE là điểm tham quan.
+enum PlaceKind {
+  PROVINCE
+  TOWN
+  SITE
+}
+
+/// Từ điển địa danh — xem prisma/place-data.ts để biết vì sao khoá theo địa danh du lịch chứ
+/// không theo đơn vị hành chính.
+model Place {
+  id   String @id @default(cuid())
+  slug String @unique
+
+  name String
+  kind PlaceKind
+
+  /// Các cách gọi khác, ở dạng đã chuẩn hoá (thường, bỏ dấu). Người dùng gõ gì cũng chuẩn hoá
+  /// rồi mới so, nên danh sách này chỉ cần liệt kê khác biệt về từ ngữ.
+  aliases String[]
+
+  sortOrder Int @default(0)
+
+  @@index([kind])
+}
+
+/// Thực thể KnowledgeDoc của SRS Mục 8.1. Cố tình không có khoá ngoại tới dữ liệu nghiệp vụ:
+/// kho tri thức được cập nhật và đánh chỉ mục lại độc lập, không ảnh hưởng toàn vẹn dữ liệu
+/// người dùng.
+model KnowledgeDoc {
+  id   String @id @default(cuid())
+  /// Bền vững và suy ra được từ nguồn ('destination:ma-pi-leng#0'), nên ingest là idempotent.
+  slug String @unique
+
+  docType KnowledgeDocType
+  title   String
+  content String
+
+  /// Mã tài liệu nguồn, để trích dẫn được nguồn trong câu trả lời và để re-ingest theo nhóm.
+  sourceRef String
+  language  String          @default("vi")
+  version   Int             @default(1)
+  status    KnowledgeStatus @default(APPROVED)
+
+  /// Thay cho cột `region` cũ. `region` là chuỗi tự do chứa tên HUYỆN, và có hai vấn đề: giá trị
+  /// thực tế là chuỗi ghép ("Yên Minh - Đồng Văn") nên không so bằng được, còn cấp huyện thì đã
+  /// bị bỏ từ 01/7/2025. Ở đây `placeSlug` trỏ tới Place.slug — không đặt khoá ngoại, giữ đúng
+  /// nguyên tắc "kho tri thức đánh chỉ mục lại độc lập" đã ghi ở đầu model; tính toàn vẹn được
+  /// kiểm tại scripts/ingest-knowledge.ts.
+  scope     KnowledgeScope @default(PROVINCE)
+  placeSlug String?
+
+  chunkIndex Int
+  tokenCount Int
+
+  /// Prisma không có kiểu vector/tsvector, nên khai Unsupported: Client không đọc/ghi được
+  /// hai cột này và mọi truy vấn liên quan đi qua $queryRaw. Để optional để Client vẫn
+  /// create được bản ghi — hai cột do scripts/ingest-knowledge.ts ghi bằng raw SQL.
+  ///
+  /// search_tsv CỐ TÌNH không phải generated column, dù to_tsvector(regconfig, text) là
+  /// immutable nên về kỹ thuật làm được. Lý do: khi bật VI_SEGMENT_ENABLED, văn bản đánh chỉ
+  /// mục phải là bản đã tách từ, mà generated column không gọi ra ngoài Postgres được. Ghi
+  /// tại ingest ngay từ đầu thì bật tách từ là sửa một dòng, không phải thêm một migration.
+  embedding Unsupported("vector(1024)")?
+  searchTsv Unsupported("tsvector")?     @map("search_tsv")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([docType, status])
+  @@index([sourceRef])
+  /// Bộ lọc thực tế luôn là "scope = PROVINCE HOẶC placeSlug thuộc danh sách", nên đánh chỉ mục
+  /// theo cặp chứ không theo riêng placeSlug.
+  @@index([scope, placeSlug])
+}
+
+// ---------------------------------------------------------------------------
+// Hội thoại chatbot
+// ---------------------------------------------------------------------------
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+/// Năm lý do chuyển tiếp. Ngoài COMPLAINT, ba lý do LOW_CONFIDENCE / OUT_OF_SCOPE /
+/// USER_REQUEST là các trường hợp SRS Mục 10.6 nói hệ thống *buộc* phải chuyển tiếp.
+enum EscalationReason {
+  COMPLAINT
+  LOW_CONFIDENCE
+  OUT_OF_SCOPE
+  USER_REQUEST
+  URGENT
+}
+
+enum EscalationStatus {
+  OPEN
+  ACKNOWLEDGED
+  CLOSED
+}
+
+/// Một phiên hội thoại. `userId` nullable vì SRS Mục 7.2 cho khách vãng lai trò chuyện với
+/// chatbot mà không cần tài khoản; khi đăng nhập thì phiên gắn vào user và đồng bộ đa thiết
+/// bị (FR-BOT-07).
+///
+/// Cascade khi xoá user, không SetNull: nội dung hội thoại có thể chứa dữ liệu cá nhân, nên
+/// xoá tài khoản phải xoá luôn hội thoại — nghĩa vụ xoá dữ liệu của Nghị định 13/2023.
+model ChatSession {
+  id String @id @default(cuid())
+
+  userId  String?
+  channel String  @default("web")
+
+  /// Nhu cầu Dialog Manager đã thu thập được qua nhiều lượt (điểm đến, số ngày, ngân sách,
+  /// số người, sở thích). Ở dạng Json vì tập slot còn thay đổi theo từng tác tử.
+  slots Json @default("{}")
+
+  escalated Boolean @default(false)
+  /// FR-BOT-11: 1 = hài lòng, -1 = không hài lòng, null = chưa đánh giá.
+  satisfaction Int?
+
+  startedAt    DateTime @default(now())
+  lastActiveAt DateTime @updatedAt
+
+  user        User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    ChatMessage[]
+  escalations ChatEscalation[]
+
+  @@index([userId, startedAt])
+  @@index([lastActiveAt])
+}
+
+/// Từng tin nhắn trong một phiên. Các trường intent/confidence/agent/trace là phần đo lường:
+/// không có chúng thì không có cách nào biết ngân sách 3 giây của NFR-PERF-03 có giữ được
+/// hay không, và sau này RAGAS (SRS Mục 11.4.7) lấy dữ liệu từ đây.
+model ChatMessage {
+  id        String @id @default(cuid())
+  sessionId String
+
+  role    MessageRole
+  /// Lưu bản GỐC chưa che dữ liệu cá nhân. Việc che (server/agents/pii.ts) chỉ áp dụng ở biên
+  /// gửi ra API ngoài theo SRS Mục 11.4.8, không phải cho lưu trữ nội bộ.
+  content String
+
+  intent      String?
+  confidence  Float?
+  agent       String?
+  suggestions String[]
+
+  /// Độ trễ từng chặng, tầng model đã dùng, id các đoạn tri thức đã truy xuất, số token.
+  trace Json?
+
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+/// Bản tóm tắt có cấu trúc gửi kèm khi chuyển tiếp, theo SRS Mục 10.6 bước 5-6.
+///
+/// CHƯA CÓ AI ĐỌC BẢNG NÀY. Hệ thống chưa có vai trò CSKH, chưa có RBAC (FR-ACC-06), chưa có
+/// back-office (FR-ADM). Vì vậy giao diện KHÔNG được hứa thời gian phản hồi — xem ghi chú
+/// tương tự ở Footer.tsx về việc không hiển thị số hotline không xác minh được.
+model ChatEscalation {
+  id        String @id @default(cuid())
+  sessionId String
+
+  reason  EscalationReason
+  summary String
+  /// Khách tự để lại, không bắt buộc.
+  contact String?
+  status  EscalationStatus @default(OPEN)
+
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
