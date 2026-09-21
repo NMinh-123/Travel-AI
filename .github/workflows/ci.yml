@@ -1,0 +1,144 @@
+# Ba tầng test, ba điều kiện chạy khác nhau.
+#
+# Tách ra vì chúng có CHI PHÍ và ĐỘ TIN khác hẳn nhau. Gộp tất cả vào một job thì mỗi PR phải chờ
+# cả Postgres lẫn trình duyệt khởi động, và khi một job E2E đỏ vì lý do hạ tầng thì người ta bắt
+# đầu bỏ qua cả những lần đỏ thật.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Chạy trên MỌI pull request. Không phụ thuộc hạ tầng nào nên phải luôn xanh trong dưới hai phút.
+  fast:
+    name: Typecheck và test nhanh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Kiểm kiểu
+        run: npm run lint
+      - name: Test nhanh
+        run: npm test
+      # Build nằm ở đây chứ không ở một job riêng: nó chạy trong khoảng mười giây và không cần hạ
+      # tầng nào. Trước đây CI không build lần nào, nên một bản build hỏng chỉ lộ ra lúc phát hành.
+      - name: Build production
+        run: npm run build
+      # Build xanh KHÔNG chứng minh bản build chạy được: esbuild gói với `--packages=external`
+      # nên mọi phụ thuộc chỉ vỡ lúc nạp. Bài này nạp thật, với devDependencies bị chặn.
+      - name: Kiểm khói bản build
+        run: npm run test:smoke
+        env:
+          JWT_SECRET: ci-placeholder-secret-at-least-32-characters
+          DATABASE_URL: postgresql://smoke:smoke@127.0.0.1:5432/smoke
+
+  # Cần Postgres thật. Chạy song song với `fast` chứ không nối tiếp: một lỗi kiểu không nói gì về
+  # việc SQL có đúng hay không, và ngược lại.
+  integration:
+    name: Test integration (Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # pgvector chứ không phải postgres gốc: lược đồ có cột vector(1024).
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: travel
+          POSTGRES_PASSWORD: travel
+          POSTGRES_DB: travelai
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U travel"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://travel:travel@127.0.0.1:5432/travelai_test
+      DATABASE_URL: postgresql://travel:travel@127.0.0.1:5432/travelai_test
+      JWT_SECRET: ci-placeholder-secret-at-least-32-characters
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Test integration
+        run: npm run test:int
+      # Chạy SAU test integration vì chính bước đó dựng `travelai_test` bằng `prisma migrate
+      # deploy`. Bài này chốt rằng thư mục migration và bảng `_prisma_migrations` khớp nhau —
+      # kiểu lệch mà mọi lệnh Prisma khác đều báo xanh cho tới lần dựng database tiếp theo.
+      - name: Đối chiếu migration với database
+        run: npm run db:migrate:check
+
+  # Bộ chấm RAGAS là mã Python và có phụ thuộc riêng, nên nó là một job riêng chứ không nhét vào
+  # job Node.
+  python:
+    name: Test bộ chấm Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      # Cài đúng bộ đã ghim. Không `--upgrade` và không resolver tự do: bộ chấm từng im lặng hỏng
+      # vì resolver bỏ sót `jsonref`, và lỗi đó bị gói thành PROVIDER_ERROR nên trông như lỗi mạng.
+      - run: pip install -r eval/score/requirements.txt
+      - name: Test bộ chấm
+        run: python -m unittest discover -s eval/score -t eval/score
+      # `--check` xác nhận bộ chấm NẠP ĐƯỢC, không chỉ xác nhận pip chạy xong. Đúng khoảng cách
+      # giữa hai điều đó là chỗ sự cố `jsonref` lọt qua.
+      - name: Bộ chấm nạp được
+        run: python eval/score/ragas_score.py --check
+        env:
+          # `--check` chỉ dựng bốn đối tượng chỉ số, không gọi mạng — nên khoá giữ chỗ là đủ. Ba
+          # biến này bắt buộc phải có mặt vì bộ chấm từ chối chạy khi thiếu bất kỳ cái nào.
+          GEMINI_API_KEY: ci-placeholder
+          EVAL_MODEL: gemini-2.0-flash
+          EMBEDDING_SERVICE_URL: http://127.0.0.1:8000
+
+  # Chậm nhất và nhiều phụ thuộc nhất, nên đứng riêng. KHÔNG gọi model thật: máy chủ giả ở
+  # `e2e/mock-gemini.ts` lo phần đó, nên job này không tốn tiền và không đỏ ngẫu nhiên.
+  e2e:
+    name: Test end-to-end (Playwright)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: travel
+          POSTGRES_PASSWORD: travel
+          POSTGRES_DB: travelai
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U travel"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://travel:travel@127.0.0.1:5432/travelai_test
+      DATABASE_URL: postgresql://travel:travel@127.0.0.1:5432/travelai_test
+      JWT_SECRET: ci-placeholder-secret-at-least-32-characters
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Cài trình duyệt
+        run: npx playwright install --with-deps chromium
+      - name: Test end-to-end
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

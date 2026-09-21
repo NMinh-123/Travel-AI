@@ -1,0 +1,12 @@
+ragas==0.4.3
+google-genai==2.23.0
+httpx==0.28.1
+# Ragas không ghim instructor; bản resolver chọn ban đầu thiếu from_genai.
+instructor[google-genai]==1.17.0
+# instructor 2.x dựng schema Gemini qua jsonref nhưng KHÔNG kéo nó theo extra google-genai.
+# Thiếu gói này thì mọi lượt chấm ném ConfigurationError, và lỗi đó bị gói lại thành
+# PROVIDER_ERROR nên nhìn giống lỗi mạng chứ không giống lỗi cài đặt.
+jsonref==1.1.0
+# Giao của instructor (>=2,<4) và langchain-openai (<3).
+openai==2.54.0
+langchain-community==0.3.31

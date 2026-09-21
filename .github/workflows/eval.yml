@@ -1,0 +1,75 @@
+# ĐÁNH GIÁ CHẤT LƯỢNG VỚI MODEL THẬT.
+#
+# KHÔNG chạy theo pull request, và đó là một quyết định chứ không phải thiếu sót. Ba lý do: mỗi
+# lần chạy gọi model thật nên tốn tiền; điểm của model dao động giữa hai lần chạy cùng một mã, nên
+# nó sẽ đỏ ngẫu nhiên và người ta sẽ bắt đầu bỏ qua; và nó cần database cùng sidecar embedding, tức
+# một môi trường mà không PR nào nên phải chờ.
+#
+# Chạy theo LỊCH để thấy xu hướng, và chạy TAY trước mỗi lần phát hành để có con số đi kèm bản
+# phát hành đó. Cổng PASS/FAIL nằm ở `eval/gate.ts`; ngưỡng chỉnh bằng biến môi trường.
+name: Đánh giá chất lượng
+
+on:
+  schedule:
+    # 02:00 UTC thứ Hai hằng tuần.
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+    inputs:
+      split:
+        description: "Tập chạy: dev hay holdout"
+        required: false
+        default: holdout
+
+jobs:
+  eval:
+    name: RAGAS và các chỉ số tất định
+    runs-on: ubuntu-latest
+    # Không có khoá thì bỏ qua thay vì đỏ: một kho fork không có secret không nên thấy CI đỏ.
+    if: ${{ github.repository_owner != '' }}
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: travel
+          POSTGRES_PASSWORD: travel
+          POSTGRES_DB: travelai
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U travel"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://travel:travel@127.0.0.1:5432/travelai
+      JWT_SECRET: ci-placeholder-secret-at-least-32-characters
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_BASE_URL: ${{ secrets.GEMINI_BASE_URL }}
+      EVAL_JUDGE_MODEL: ${{ secrets.EVAL_JUDGE_MODEL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+      - run: npm ci
+      - name: Dựng lược đồ và nạp dữ liệu
+        run: |
+          npx prisma db push --skip-generate
+          npx tsx db/seed.ts
+      - name: Khởi động sidecar embedding
+        run: |
+          pip install -r services/embedding/requirements.txt
+          python -m uvicorn main:app --app-dir services/embedding --port 8000 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8000/health && break; sleep 5; done
+      - name: Nạp kho tri thức
+        run: npm run db:ingest
+      - name: Cài bộ chấm RAGAS
+        run: |
+          python -m venv eval/.venv
+          eval/.venv/bin/python -m pip install -r eval/score/requirements.txt
+      - name: Chạy đánh giá
+        run: npm run eval -- --split ${{ inputs.split || 'holdout' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results
+          path: eval/results/
+          retention-days: 30
