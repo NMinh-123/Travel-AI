@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Minh họa cảnh quan núi">
+  <defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#bfd8cf"/><stop offset="1" stop-color="#edf0d9"/></linearGradient></defs>
+  <path fill="url(#sky)" d="M0 0h800v600H0z"/>
+  <circle cx="620" cy="160" r="60" fill="#f9f7dc" opacity=".8"/>
+  <path fill="#8da99b" d="M0 450 170 210 280 350 470 150 650 360 800 270v330H0z"/>
+  <path fill="#527b6b" d="M0 510 110 360 260 440 390 290 570 470 710 320 800 430v170H0z"/>
+  <path fill="#284e43" d="M0 520 200 450 340 540 540 420 800 530v70H0z"/>
+</svg>

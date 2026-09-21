@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/*
+  Thu muc design/ chua cac ban ve giao dien (.dc.html) va mot trang da dong goi nang vai MB.
+  Tailwind v4 tu do tim tep nguon trong ca du an, nen no quet luon cho do va sinh ra hang
+  nghin lop tu nhung chuoi trong nhung tep ay: CSS xuat ban phinh tu 60 KB len 121 KB ma
+  khong mot lop nao trong so do duoc trang that dung toi. Ban ve khong phai ma nguon cua
+  ung dung nen loai han khoi pham vi quet.
+*/
+@source not "../design";
+
+@layer base {
+  :root {
+    --font-serif: 'Playfair Display', Georgia, serif;
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #f7faf8;
+    color: #181c1c;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-serif);
+  }
+}
+
+.font-display {
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+.font-body {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Glassmorphism & AI visual layers */
+.glass-ai {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  box-shadow: 0 10px 30px -10px rgba(0, 92, 85, 0.08);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(224, 227, 225, 0.8);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04);
+}
+
+.glass-dark {
+  background: rgba(24, 28, 28, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Smooth custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f4f3;
+}
+::-webkit-scrollbar-thumb {
+  background: #bdc9c6;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #6e7977;
+}
