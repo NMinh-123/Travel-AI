@@ -1,0 +1,27 @@
+# Dịch vụ embedding cục bộ cho tầng RAG của chatbot.
+#
+# Trên Windows, `pip install torch` lấy sẵn wheel CPU. Muốn dùng GPU thì phải cài
+# từ index riêng của PyTorch với bản CUDA khớp card:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+# RTX 5060 là Blackwell (sm_120) nên cần cu128 trở lên; wheel cũ cài xong mới báo
+# thiếu kernel. Xem embedding-service/main.py để biết vì sao CPU là mặc định.
+#
+# Ràng buộc để mở có chủ ý ở dòng dưới, không ghim cứng: bản ghim phải là bản đã
+# xác minh cài được thật trên máy này. Chạy `pip freeze` sau khi cài xong nếu cần
+# một bản khoá chính xác cho môi trường khác.
+
+fastapi>=0.110.0
+uvicorn>=0.28.0
+pydantic>=2.0.0
+
+# sentence-transformers thay vì FlagEmbedding: ta chỉ cần vector dense 1024 chiều
+# từ BGE-M3. Nhánh từ khoá của hybrid search do Postgres tsvector đảm nhiệm, không
+# dùng vector sparse của model, nên không cần API rộng hơn của FlagEmbedding.
+# CrossEncoder trong cùng thư viện này cũng chạy được BGE-reranker-v2-m3.
+sentence-transformers>=3.0.0
+torch>=2.2.0
+
+# Tách từ tiếng Việt cho nhánh từ khoá (VI_SEGMENT_ENABLED). CỐ TÌNH không cài sẵn:
+# mặc định tắt, và underthesea kéo theo khá nhiều phụ thuộc. Endpoint /segment import
+# lazy và báo lỗi rõ ràng nếu thiếu. Bật thì cài thêm:
+#   pip install underthesea
