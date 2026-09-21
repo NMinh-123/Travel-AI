@@ -24,3 +24,8 @@ data/raw-web/
 /test-results/
 /playwright-report/
 /blob-report/
+
+# Tài liệu nội bộ không đưa vào phiên bản Git.
+claude_fix.md
+codex_fix.md
+dia_danh.md
