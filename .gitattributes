@@ -1,0 +1,13 @@
+# Prisma băm NGUYÊN BYTE nội dung mỗi file migration và lưu kết quả vào bảng
+# `_prisma_migrations`. Trên máy Windows có `core.autocrlf=true`, git đổi LF thành CRLF lúc
+# checkout, nên cùng một migration cho ra hai mã băm khác nhau tuỳ máy — và `prisma migrate dev`
+# báo "migrations have been modified since they were applied" rồi đề nghị dựng lại cả database.
+#
+# Đây không phải giả thuyết: khi khôi phục bảy migration bị mất, checksum trên đĩa lệch toàn bộ
+# với checksum trong database, và sau khi chuẩn hoá về LF thì khớp từng cái một. Khoá xuống LF
+# để mã băm chỉ phụ thuộc nội dung, không phụ thuộc hệ điều hành của người checkout.
+*.sql text eol=lf
+db/migrations/migration_lock.toml text eol=lf
+
+# Cùng lý do với mọi thứ được băm, ký hoặc so sánh theo byte.
+*.jsonl text eol=lf

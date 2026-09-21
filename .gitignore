@@ -1,0 +1,26 @@
+node_modules/
+build/
+dist/
+coverage/
+eval/results/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+.env*
+!.env.example
+# Công cụ AI, tài liệu và bản mẫu thiết kế ngoài luồng chạy ứng dụng.
+/agent/
+/.claude/
+/docs/
+/design/
+# Bản thô do scripts/crawl-web.ts tải về. Tái tạo được bằng `npm run db:crawl`;
+# thứ cần review qua git là bản đã biên tập ở data/knowledge/web.ts.
+data/raw-web/
+
+# Playwright: báo cáo và dấu vết của lần chạy E2E hỏng.
+/test-results/
+/playwright-report/
+/blob-report/

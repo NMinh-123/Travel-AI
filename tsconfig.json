@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "jsx": "react-jsx",
+
+    /**
+     * Bốn alias, mỗi cái ứng với một tầng của dự án. Quy ước: import KHÔNG BAO GIỜ dùng `../`.
+     * Cùng thư mục thì `./x`, khác thư mục thì alias. Nhờ vậy đọc một dòng import là biết ngay
+     * file đích nằm ở tầng nào, và di chuyển file không làm gãy hàng loạt đường dẫn tương đối.
+     *
+     * Cả bốn phải được khai lại ở vite.config.ts (cho client) — esbuild và tsx đọc thẳng từ đây.
+     */
+    "baseUrl": ".",
+    "paths": {
+      "@client/*": ["./client/*"],
+      "@server/*": ["./server/*"],
+      "@shared/*": ["./shared/*"],
+      "@data/*": ["./data/*"],
+      "@eval/*": ["./eval/*"],
+      "@test/*": ["./test/*"]
+    },
+
+    "allowImportingTsExtensions": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noEmit": true
+  },
+  "include": ["client", "server", "shared", "data", "scripts", "db", "eval", "test", "vite.config.ts", "prisma.config.ts", "vitest.config.ts", "vitest.integration.config.ts", "playwright.config.ts", "e2e"],
+  "exclude": ["node_modules", "dist", "services"]
+}
