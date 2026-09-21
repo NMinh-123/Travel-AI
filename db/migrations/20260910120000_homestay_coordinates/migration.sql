@@ -1,0 +1,33 @@
+-- Toạ độ cho cơ sở lưu trú, để nhúng bản đồ ở danh sách chỗ nghỉ.
+--
+-- Viết TAY, không dùng bản `prisma migrate dev` sinh ra. Lý do đã gặp hai lần trước đó và sẽ còn
+-- gặp lại: bản sinh tự động luôn kèm hai câu
+--
+--     DROP INDEX "knowledgedoc_embedding_hnsw";
+--     DROP INDEX "knowledgedoc_search_gin";
+--
+-- vì hai index đó được tạo bằng raw SQL trên cột `Unsupported` mà Prisma không mô hình hoá được,
+-- nên mỗi lần so schema nó đều coi là drift. Để nguyên là phá tầng RAG mà KHÔNG có lỗi nào báo:
+-- truy vấn vector chuyển sang quét tuần tự, biểu hiện duy nhất là chậm dần khi kho lớn lên.
+
+-- ---------------------------------------------------------------------------
+-- Cột NULLABLE, và không đặt DEFAULT
+-- ---------------------------------------------------------------------------
+-- Đây là quyết định đáng giải thích, vì cả hai lựa chọn khác đều dẫn tới dữ liệu sai im lặng.
+--
+-- KHÔNG dùng `DEFAULT 0`: bảng đang có 20 hàng, và giá trị đó đặt mọi cơ sở vào toạ độ (0, 0) —
+-- một điểm giữa Đại Tây Dương. Nó vẫn hợp kiểu, vẫn seed được, vẫn nhúng được bản đồ, và bản đồ
+-- sẽ hiện một điểm giữa biển mà không gì báo là sai.
+--
+-- KHÔNG ép NOT NULL ngay: toạ độ thật nằm ở `Place.geo` trong data/places/lodging.ts, tức ở tầng
+-- FILE chứ không phải trong database, nên không backfill được bằng SQL. Chúng chỉ có mặt sau khi
+-- `npm run db:seed` chạy. Ép NOT NULL ở đây sẽ làm migrate hỏng trên bất kỳ database nào đã có
+-- dữ liệu cũ, và thứ tự triển khai đúng là migrate rồi mới seed.
+--
+-- Vì vậy `db/schema.prisma` cũng khai `lat Float?` — nullable ở cả hai phía. Một hàng thiếu toạ
+-- độ là trạng thái CÓ THẬT (cơ sở mới thêm mà chưa seed lại), và giao diện phải xử lý được nó:
+-- `PlaceMap` không được gọi, thẻ chỉ ẩn nút xem bản đồ. Khai NOT NULL trong Prisma mà database
+-- cho phép NULL thì Prisma Client sẽ khẳng định một điều không đúng, và chỗ hỏng sẽ hiện ra ở
+-- một nơi rất xa nguyên nhân.
+ALTER TABLE "Homestay" ADD COLUMN "lat" DOUBLE PRECISION;
+ALTER TABLE "Homestay" ADD COLUMN "lng" DOUBLE PRECISION;

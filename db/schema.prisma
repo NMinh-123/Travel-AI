@@ -1,0 +1,677 @@
+// Tầng dữ liệu của Ha Giang Travel.
+//
+// Ba nhóm model tách biệt:
+//   1. Người dùng & auth  — User, Favorite, SavedItinerary
+//   2. Nội dung Hà Giang  — Destination, Homestay, GearItem, PassWeather,
+//                            PresetItinerary
+//   3. Chatbot            — KnowledgeDoc (kho tri thức RAG), ChatSession,
+//                            ChatMessage, ChatEscalation
+//
+// Nội dung Hà Giang trước đây là file tĩnh src/data/hagiangData.ts; nay nằm ở đây và được
+// nạp bằng db/seed.ts. Mọi bảng nội dung đều có `slug` để frontend tham chiếu bằng id
+// bền vững ('ma-pi-leng') thay vì id sinh tự động, và `sortOrder` để giữ đúng thứ tự hiển
+// thị vốn có của mảng gốc.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Người dùng & auth
+// ---------------------------------------------------------------------------
+
+enum Provider {
+  EMAIL
+  GOOGLE
+}
+
+/// Lưu dạng mã, map sang nhãn tiếng Việt trong server/domain/mappers.ts để shared/types.ts
+/// không phải đổi và các component không phải sửa theo.
+enum RiderLevel {
+  BEGINNER
+  EXPERIENCED
+  VETERAN
+  EASY_RIDER
+}
+
+model User {
+  id     String @id @default(cuid())
+  email  String @unique
+  name   String
+  avatar String
+
+  /// Null với tài khoản đăng nhập bằng Google — những tài khoản đó không có mật khẩu.
+  passwordHash String?
+  provider     Provider @default(EMAIL)
+  googleId     String?  @unique
+
+  phone      String?
+  riderLevel RiderLevel?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  favorites        Favorite[]
+  savedItineraries SavedItinerary[]
+  chatSessions     ChatSession[]
+
+  @@index([provider])
+}
+
+/// Tham chiếu Destination.slug thay vì khoá ngoại: slug là thứ frontend gửi lên, và giữ
+/// được bản ghi yêu thích kể cả khi một điểm đến tạm thời bị rút khỏi danh mục.
+model Favorite {
+  id              String   @id @default(cuid())
+  userId          String
+  destinationSlug String
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, destinationSlug])
+  @@index([userId])
+}
+
+
+/// `days` là DayItinerary[] dạng JSON. Cấu trúc ngày -> waypoint chỉ được đọc trọn khối,
+/// không có nhu cầu truy vấn từng waypoint, nên chuẩn hoá thành hai bảng nữa không đổi
+/// được gì về khả năng truy vấn.
+model SavedItinerary {
+  id       String @id @default(cuid())
+  userId   String
+  title    String
+  overview String
+  totalKm  Int
+
+  travelMode  String?
+  vibe        String?
+  budgetLevel String?
+
+  days      Json
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Nội dung Hà Giang
+// ---------------------------------------------------------------------------
+
+enum DestinationCategory {
+  pass
+  nature
+  culture
+  viewpoint
+  waterfall
+  homestay
+}
+
+/// Mức tin cậy của `lat`/`lng`, sao chép từ `Place.geo.precision` trong @data/places lúc seed.
+///
+/// Cột này tồn tại vì thiếu nó thì một toạ độ xấp xỉ chỉ còn hai lựa chọn: giả vờ là đã khảo sát,
+/// hoặc thành NULL. Dự án đã chọn vế sau và vì thế vứt luôn toạ độ của 8 điểm đến mà kho địa danh
+/// vẫn giữ đủ số. Có cột này thì con số đi được tới giao diện kèm đúng độ chắc chắn của nó, và
+/// giao diện tự quyết vẽ bản đồ điểm, bản đồ khu vực hay chỉ hiện chữ.
+///
+/// `area_only` dành cho điểm đến mượn toạ độ của vùng cha thay vì có toạ độ riêng — chưa mục nào
+/// dùng, nhưng giữ trong enum vì hợp đồng API ở @shared/types đã khai báo đủ bốn giá trị.
+enum LocationPrecision {
+  surveyed
+  approximate
+  area_only
+  unknown
+}
+
+model Destination {
+  id             String              @id @default(cuid())
+  slug           String              @unique
+  name           String
+  vietnameseName String
+  district       String
+  category       DestinationCategory
+
+  elevation         Int?
+  distanceFromStart Int?
+  /// Nhãn tiếng Việt có dấu và có khoảng trắng nên không dùng enum được.
+  difficulty        String
+  bestTime          String
+
+  highlights  String[]
+  imageUrl    String
+  gallery     String[]
+  description String
+  safetyTip   String
+
+  lat Float?
+  lng Float?
+  /// Luôn `unknown` khi không có toạ độ; ràng buộc CHECK trong migration giữ đúng điều đó.
+  locationPrecision LocationPrecision @default(unknown)
+
+  recommendedStayHours Float
+  localFood            String[]
+
+  sortOrder Int
+
+  @@index([category])
+}
+
+model Homestay {
+  id       String @id @default(cuid())
+  slug     String @unique
+  name     String
+  location String
+
+  pricePerNight Int
+  /// rating và reviewCount hiện là dữ liệu mẫu, chưa nối nguồn đánh giá thật.
+  rating        Float
+  reviewCount   Int
+
+  imageUrl  String
+  tags      String[]
+  highlight String
+
+  /// Toạ độ để nhúng bản đồ ở danh sách chỗ nghỉ.
+  ///
+  /// Nguồn là `Place.geo` của chính cơ sở trong data/places/lodging.ts, và ở đó MỌI mục đều mang
+  /// `precision: "approximate"` — toạ độ ở mức xã hoặc bản, không phải mức công trình. Hệ quả
+  /// phải giữ: đủ để cho khách thấy chỗ đó nằm ở đâu trên cung đường, KHÔNG đủ để dẫn đường tới
+  /// cửa. Vì vậy giao diện chỉ nhúng bản đồ xem vị trí và không mở chế độ chỉ đường.
+  ///
+  /// NULLABLE có chủ đích. Toạ độ nằm ở tầng file chứ không sinh ra được bằng SQL, nên một hàng
+  /// vừa migrate mà chưa seed lại thì chưa có toạ độ — đó là trạng thái có thật, không phải lỗi.
+  /// Khai NOT NULL trong khi database cho phép NULL sẽ khiến Prisma Client khẳng định một điều
+  /// không đúng, và chỗ hỏng hiện ra ở nơi rất xa nguyên nhân.
+  lat Float?
+  lng Float?
+
+  sortOrder Int
+}
+
+enum GearCategory {
+  safety
+  clothing
+  electronics
+  medical
+  documents
+}
+
+/// Chỉ là danh mục. Trạng thái tick của từng người vẫn ở localStorage để dùng được mà
+/// không cần đăng nhập, nên ở đây chỉ có giá trị mặc định.
+model GearItem {
+  id       String       @id @default(cuid())
+  slug     String       @unique
+  name     String
+  category GearCategory
+
+  recommended    Boolean
+  defaultChecked Boolean
+  note           String
+
+  sortOrder Int
+}
+
+/// Số liệu tham khảo theo mùa, KHÔNG phải quan trắc thời gian thực. Trường updatedAt cũ
+/// ("Vừa cập nhật 5 phút trước") đã bị bỏ vì nó tạo cảm giác dữ liệu tươi một cách giả tạo.
+model PassWeather {
+  id          String @id @default(cuid())
+  slug        String @unique
+  location    String
+  elevation   Int
+  temp        Int
+  condition   String
+  windSpeedKm Int
+  fogLevel    String
+  roadStatus  String
+
+  sortOrder Int
+}
+
+model PresetItinerary {
+  id       String @id @default(cuid())
+  slug     String @unique
+  title    String
+  overview String
+  totalKm  Int
+
+  /// DayItinerary[] dạng JSON, cùng lý do như SavedItinerary.days.
+  days Json
+
+  sortOrder Int
+}
+
+// ---------------------------------------------------------------------------
+// Kho tri thức chatbot (RAG)
+// ---------------------------------------------------------------------------
+
+/// Phân loại tài liệu theo SRS Mục 11.4.3. `tour_desc` chưa dùng ở giai đoạn này (chưa có
+/// sản phẩm tour), giữ trong enum để không phải migrate khi Giai đoạn 2 thêm danh mục tour.
+enum KnowledgeDocType {
+  faq
+  policy
+  destination
+  tour_desc
+}
+
+/// Trạng thái duyệt. Chỉ đoạn APPROVED được đưa vào ngữ cảnh trả lời — SRS yêu cầu chatbot
+/// chỉ nói trong phạm vi tri thức "đã được kiểm duyệt" (FR-BOT-05).
+enum KnowledgeStatus {
+  DRAFT
+  APPROVED
+  ARCHIVED
+}
+
+/// Phạm vi không gian của một đoạn tri thức.
+///
+/// Hai tầng chứ không phải phân mảnh phẳng theo địa danh, vì phần lớn tri thức KHÔNG gắn với một
+/// địa danh nào: giấy tờ khu vực biên giới, bằng lái, sạt lở mùa mưa, ứng xử khi vào bản đều áp
+/// cho cả địa bàn. Đo trên kho hiện tại, 23/31 đoạn thuộc loại này. Lọc cứng theo địa danh sẽ
+/// giết đúng nhóm đó, nên đoạn PROVINCE luôn được xét bất kể khách hỏi về nơi nào.
+enum KnowledgeScope {
+  PROVINCE
+  PLACE
+}
+
+/// Loại địa danh. PROVINCE là cả địa bàn, TOWN là nơi dừng nghỉ, SITE là điểm tham quan.
+/// Loại thực thể trong từ điển địa danh.
+///
+/// Giá trị viết CHỮ THƯỜNG và khớp từng ký tự với union `PlaceKind` ở data/places/types.ts. Chọn
+/// vậy để không cần một tầng ánh xạ giữa TypeScript và Postgres — mỗi tầng ánh xạ là một chỗ có
+/// thể lệch, và khi lệch thì seed ghi sai loại mà không có lỗi nào báo.
+///
+/// Bản trước chỉ có PROVINCE, TOWN, SITE. Ba giá trị đó không phân biệt được một con đèo với một
+/// quán ăn hay một điểm dừng ngắm cảnh, nên mọi câu hỏi kiểu "quán ăn nào gần đây" đều phải quét
+/// văn bản thay vì lọc theo loại. Backfill: TOWN -> commune, SITE -> landmark.
+///
+/// KHÔNG có `district`: cấp huyện đã bị bỏ từ 01/7/2025. Địa bàn cũ như Đồng Văn hay Mèo Vạc nằm
+/// ở `region` — vùng du lịch theo cách gọi quen thuộc, không phải đơn vị hành chính.
+enum PlaceKind {
+  province
+  commune
+  region
+  landmark
+  scenic_view
+  cultural_site
+  historical_site
+  local_food
+  specialty
+  restaurant
+  homestay
+  guesthouse
+  hotel
+}
+
+/// Tám nhánh nội dung của SRS Mục 11.1.1.5. Khớp `KnowledgeDomain` ở data/knowledge/types.ts.
+enum KnowledgeDomain {
+  destination
+  attraction
+  food
+  seasonal_recommendation
+  accommodation
+  tour
+  travel_guide
+  policy
+}
+
+/// Xuất xứ của nội dung, khớp union `KnowledgeSourceClass` ở data/knowledge/types.ts.
+///
+/// Đưa vào DB chứ không chỉ để ở file nguồn vì nó quyết định hai thứ lúc chạy: câu ghi nguồn gắn
+/// vào cuối đoạn, và việc một dữ kiện có được phép đứng ở vị trí giá hay không (Mục 11.1.1.10 cấm
+/// dữ kiện suy luận đứng ở đó). Không có cột này thì muốn biết một đoạn đến từ đâu phải tra ngược
+/// về file nguồn theo `sourceRef`, và bản ghi trong database mất khả năng tự giải thích.
+enum KnowledgeSourceClass {
+  editorial
+  crawled_verified
+  estimated
+}
+
+/// Loại thực thể mà tài liệu tri thức nói về. Rộng hơn `PlaceKind` vì kho tri thức còn chứa những
+/// nhánh không phải thực thể địa lý — chính sách, FAQ, mẹo đi đường.
+enum KnowledgeEntityType {
+  province
+  commune
+  region
+  location
+  landmark
+  scenic_view
+  cultural_site
+  historical_site
+  local_food
+  restaurant
+  specialty
+  hotel
+  homestay
+  guesthouse
+  tour_description
+  tour_itinerary
+  tour_policy
+  transportation
+  safety
+  local_tips
+  faq
+  booking_policy
+  cancellation_policy
+  payment_policy
+  refund_policy
+}
+
+/// Từ điển địa danh — xem data/places.ts để biết vì sao khoá theo địa danh du lịch chứ
+/// không theo đơn vị hành chính.
+model Place {
+  id   String @id @default(cuid())
+  slug String @unique
+
+  name String
+  kind PlaceKind
+
+  /// Các cách gọi khác, ở dạng đã chuẩn hoá (thường, bỏ dấu). Người dùng gõ gì cũng chuẩn hoá
+  /// rồi mới so, nên danh sách này chỉ cần liệt kê khác biệt về từ ngữ.
+  aliases String[]
+
+  /// Slug thực thể cha. Điểm ngắm cảnh trỏ về đèo chứa nó, quán ăn trỏ về xã, xã trỏ về tỉnh.
+  ///
+  /// Trước đây cây này chỉ sống ở data/places/types.ts và không được seed xuống, nên tầng truy
+  /// xuất không dùng được: hỏi "có gì ở Đồng Văn" chỉ lấy được tài liệu gắn ĐÚNG slug `dong-van`,
+  /// còn tài liệu của phố cổ, chợ phiên, dinh thự trong vùng thì không ai gom hộ. Có cột này thì
+  /// `expandPlaceTree` ở server/domain/rag/places.ts mở được từ một địa danh ra cả cây con.
+  ///
+  /// Không đặt khoá ngoại tự tham chiếu: danh mục được seed tuần tự theo thứ tự cha trước con, và
+  /// một khoá ngoại ở đây biến mọi lần sắp xếp lại file nguồn thành một lỗi ràng buộc. Tính toàn
+  /// vẹn và việc không có chu trình do data/validate.ts kiểm.
+  parentSlug String?
+
+  sortOrder Int @default(0)
+
+  @@index([kind])
+  @@index([parentSlug])
+}
+
+/// Thực thể KnowledgeDoc của SRS Mục 8.1. Cố tình không có khoá ngoại tới dữ liệu nghiệp vụ:
+/// kho tri thức được cập nhật và đánh chỉ mục lại độc lập, không ảnh hưởng toàn vẹn dữ liệu
+/// người dùng.
+model KnowledgeDoc {
+  id   String @id @default(cuid())
+  /// Bền vững và suy ra được từ nguồn ('destination:ma-pi-leng#0'), nên ingest là idempotent.
+  slug String @unique
+
+  docType KnowledgeDocType
+  title   String
+  content String
+
+  /// Mã tài liệu nguồn, để trích dẫn được nguồn trong câu trả lời và để re-ingest theo nhóm.
+  sourceRef String
+  language  String          @default("vi")
+  version   Int             @default(1)
+  status    KnowledgeStatus @default(APPROVED)
+
+  /// Thay cho cột `region` cũ. `region` là chuỗi tự do chứa tên HUYỆN, và có hai vấn đề: giá trị
+  /// thực tế là chuỗi ghép ("Yên Minh - Đồng Văn") nên không so bằng được, còn cấp huyện thì đã
+  /// bị bỏ từ 01/7/2025. Ở đây `placeSlug` trỏ tới Place.slug — không đặt khoá ngoại, giữ đúng
+  /// nguyên tắc "kho tri thức đánh chỉ mục lại độc lập" đã ghi ở đầu model; tính toàn vẹn được
+  /// kiểm tại scripts/ingest-knowledge.ts.
+  scope     KnowledgeScope @default(PROVINCE)
+  placeSlug String?
+
+  /// Metadata phân loại của SRS Mục 11.1.1.5.
+  ///
+  /// VÌ SAO NĂM CỘT NÀY QUAN TRỌNG HƠN VẺ NGOÀI: bộ lọc metadata chạy TRƯỚC semantic search. Hỏi
+  /// "ăn gì ở Đồng Văn" thì lọc `domain = food` cộng cây con Đồng Văn xong mới tính tương đồng,
+  /// thay vì thả vector đi mò trong toàn kho rồi hy vọng đúng thứ nổi lên. Không có chúng thì
+  /// mọi câu hỏi đều cạnh tranh trong cùng một không gian và top-k bị chiếm bởi tài liệu chỉ
+  /// giống về từ ngữ.
+  ///
+  /// `entityId` trỏ tới `Place.slug` nhưng CỐ TÌNH không có khoá ngoại, giữ đúng nguyên tắc "kho
+  /// tri thức đánh chỉ mục lại độc lập với dữ liệu nghiệp vụ" đã ghi ở đầu model. Tính toàn vẹn
+  /// được kiểm ở bước ingest — thiếu phép kiểm đó thì một entityId sai chính tả sẽ khiến tài liệu
+  /// không bao giờ khớp bộ lọc nào và lặng lẽ biến khỏi mọi câu trả lời.
+  domain     KnowledgeDomain     @default(travel_guide)
+  entityType KnowledgeEntityType @default(faq)
+  entityId   String?
+  tags       String[]
+  /// Mùa mà tài liệu áp dụng, khớp union `Season` ở data/knowledge/types.ts. Dùng String[] chứ
+  /// không dùng enum vì bảng mùa của Hà Giang đi theo mùa hoa và mùa mưa chứ không theo bốn mùa,
+  /// và danh sách đó còn phải đối chiếu với bảng mùa của Temporal Router ở giai đoạn B — khoá
+  /// cứng thành enum bây giờ là khoá sớm một thứ chưa chốt.
+  season     String[]
+
+  chunkIndex Int
+  tokenCount Int
+
+  /// XUẤT XỨ, chép từ tài liệu nguồn lúc ingest.
+  ///
+  /// `validUntil` là mốc nội dung hết hạn tin cậy. Nó KHÔNG được suy ra cho mọi tài liệu: nội
+  /// dung biên tập của dự án không có hạn, còn nội dung crawl và nội dung ước lượng thì có — giá
+  /// du lịch trượt nhanh, và một con số khảo sát từ hai năm trước trông y hệt một con số mới.
+  /// Quy tắc suy nằm ở scripts/ingest-knowledge.ts để chỉ có một nơi quyết định.
+  sourceUrl   String?
+  sourceClass KnowledgeSourceClass @default(editorial)
+  verifiedAt  DateTime?
+  validUntil  DateTime?
+
+  /// VÂN TAY để ingest chạy tăng dần.
+  ///
+  /// `contentHash` là SHA-256 của đúng chuỗi đem đi embed (tiêu đề nối nội dung), nên so vân tay
+  /// là trả lời được câu "đoạn này có cần embed lại không" mà không phải đọc vector cũ.
+  /// `embeddingModel` và `pipelineVersion` đi kèm vì cùng một nội dung qua hai model hoặc hai cách
+  /// cắt đoạn sẽ cho hai vector khác nhau — thiếu chúng thì đổi model xong ingest sẽ báo "không có
+  /// gì đổi" và cả kho ở lại với vector của model cũ.
+  ///
+  /// Mặc định là chuỗi rỗng để migration chạy được trên dữ liệu đã có; giá trị rỗng không khớp bất
+  /// kỳ vân tay nào nên lần ingest kế tiếp tự đánh chỉ mục lại toàn bộ, đúng điều cần xảy ra.
+  contentHash     String @default("")
+  embeddingModel  String @default("")
+  pipelineVersion String @default("")
+
+  /// Prisma không có kiểu vector/tsvector, nên khai Unsupported: Client không đọc/ghi được
+  /// hai cột này và mọi truy vấn liên quan đi qua $queryRaw. Để optional để Client vẫn
+  /// create được bản ghi — hai cột do scripts/ingest-knowledge.ts ghi bằng raw SQL.
+  ///
+  /// search_tsv CỐ TÌNH không phải generated column, dù to_tsvector(regconfig, text) là
+  /// immutable nên về kỹ thuật làm được. Lý do: khi bật VI_SEGMENT_ENABLED, văn bản đánh chỉ
+  /// mục phải là bản đã tách từ, mà generated column không gọi ra ngoài Postgres được. Ghi
+  /// tại ingest ngay từ đầu thì bật tách từ là sửa một dòng, không phải thêm một migration.
+  embedding Unsupported("vector(1024)")?
+  searchTsv Unsupported("tsvector")?     @map("search_tsv")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Hai chỉ mục cho bộ lọc metadata. Bắt buộc phải có: lọc TRƯỚC semantic search mà không có chỉ
+  /// mục thì bước lọc còn tốn hơn việc không lọc, và khi đó tối ưu này thành một khoản lỗ.
+  @@index([domain, entityType])
+  @@index([domain, status])
+  @@index([entityId])
+  @@index([docType, status])
+  @@index([sourceRef])
+  /// Soát nội dung hết hạn: "tài liệu crawl nào đã quá validUntil". Không có chỉ mục thì phép soát
+  /// đó quét toàn bảng, nên nó sẽ không bao giờ được chạy định kỳ.
+  @@index([sourceClass, validUntil])
+  /// Bộ lọc thực tế luôn là "scope = PROVINCE HOẶC placeSlug thuộc danh sách", nên đánh chỉ mục
+  /// theo cặp chứ không theo riêng placeSlug.
+  @@index([scope, placeSlug])
+}
+
+// ---------------------------------------------------------------------------
+// Hội thoại chatbot
+// ---------------------------------------------------------------------------
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+/// Năm lý do chuyển tiếp. Ngoài COMPLAINT, ba lý do LOW_CONFIDENCE / OUT_OF_SCOPE /
+/// USER_REQUEST là các trường hợp SRS Mục 10.6 nói hệ thống *buộc* phải chuyển tiếp.
+enum EscalationReason {
+  COMPLAINT
+  LOW_CONFIDENCE
+  OUT_OF_SCOPE
+  USER_REQUEST
+  URGENT
+}
+
+enum EscalationStatus {
+  OPEN
+  ACKNOWLEDGED
+  CLOSED
+}
+
+/// Một phiên hội thoại. `userId` nullable vì SRS Mục 7.2 cho khách vãng lai trò chuyện với
+/// chatbot mà không cần tài khoản; khi đăng nhập thì phiên gắn vào user và đồng bộ đa thiết
+/// bị (FR-BOT-07).
+///
+/// Cascade khi xoá user, không SetNull: nội dung hội thoại có thể chứa dữ liệu cá nhân, nên
+/// xoá tài khoản phải xoá luôn hội thoại — nghĩa vụ xoá dữ liệu của Nghị định 13/2023.
+model ChatSession {
+  id String @id @default(cuid())
+
+  userId  String?
+  channel String  @default("web")
+
+  /// Nhu cầu Dialog Manager đã thu thập được qua nhiều lượt (điểm đến, số ngày, ngân sách,
+  /// số người, sở thích). Ở dạng Json vì tập slot còn thay đổi theo từng tác tử.
+  slots Json @default("{}")
+
+  escalated Boolean @default(false)
+  /// FR-BOT-11: 1 = hài lòng, -1 = không hài lòng, null = chưa đánh giá.
+  satisfaction Int?
+
+  startedAt    DateTime @default(now())
+  lastActiveAt DateTime @updatedAt
+
+  user        User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    ChatMessage[]
+  escalations ChatEscalation[]
+
+  @@index([userId, startedAt])
+  @@index([lastActiveAt])
+}
+
+/// Từng tin nhắn trong một phiên. Các trường intent/confidence/agent/trace là phần đo lường:
+/// không có chúng thì không có cách nào biết ngân sách 3 giây của NFR-PERF-03 có giữ được
+/// hay không, và sau này RAGAS (SRS Mục 11.4.7) lấy dữ liệu từ đây.
+model ChatMessage {
+  id        String @id @default(cuid())
+  sessionId String
+
+  role    MessageRole
+  /// Lưu bản GỐC chưa che dữ liệu cá nhân. Việc che (server/domain/agents/pii.ts) chỉ áp dụng ở biên
+  /// gửi ra API ngoài theo SRS Mục 11.4.8, không phải cho lưu trữ nội bộ.
+  content String
+
+  intent      String?
+  confidence  Float?
+  agent       String?
+  suggestions String[]
+
+  /// Độ trễ từng chặng, tầng model đã dùng, id các đoạn tri thức đã truy xuất, số token.
+  trace Json?
+
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+}
+
+/// Bản tóm tắt có cấu trúc gửi kèm khi chuyển tiếp, theo SRS Mục 10.6 bước 5-6.
+///
+/// CHƯA CÓ AI ĐỌC BẢNG NÀY. Hệ thống chưa có vai trò CSKH, chưa có RBAC (FR-ACC-06), chưa có
+/// back-office (FR-ADM). Vì vậy giao diện KHÔNG được hứa thời gian phản hồi — xem ghi chú
+/// tương tự ở Footer.tsx về việc không hiển thị số hotline không xác minh được.
+model ChatEscalation {
+  id        String @id @default(cuid())
+  sessionId String
+
+  reason  EscalationReason
+  summary String
+  /// Khách tự để lại, không bắt buộc.
+  contact String?
+  status  EscalationStatus @default(OPEN)
+
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Dữ liệu động (SRS Mục 11.1.1.3 và 11.1.1.7)
+// ---------------------------------------------------------------------------
+
+/// Cache của các lượt gọi API bên thứ ba — thời tiết, tuyến đường, tìm địa điểm, geocoding.
+///
+/// VÌ SAO CACHE NẰM Ở POSTGRES chứ không trong bộ nhớ tiến trình. Dữ liệu động phải sống qua lần
+/// khởi động lại: một bản đồ tuyến đường có TTL 24 giờ mà mất sạch mỗi lần restart thì phần lớn
+/// giá trị của việc cache biến mất, và mỗi lần triển khai lại là một đợt gọi API tính tiền.
+///
+/// VÌ SAO KHÔNG GHI VÀO `ChatSession.state`. SRS nói dữ liệu realtime là *ephemeral*. Nhét
+/// `realtime_context` vào state của phiên là lưu vĩnh viễn đúng thứ SRS nói không được lưu, vì
+/// vòng đời của state bằng vòng đời phiên chat. Ở đây `expiresAt` đặt ranh giới vòng đời ngay
+/// trong schema, không phụ thuộc vào kỷ luật lập trình ở tầng trên.
+///
+/// QUY TẮC CỨNG của Mục 11.1.1.11: **bản hết hạn không được phục vụ**. Nó được hiện thực thành
+/// điều kiện `expiresAt > now()` ngay trong câu truy vấn đọc, chứ không lọc ở tầng ứng dụng và
+/// cũng không trông chờ bộ quét đã kịp xoá. Hết hạn thì gọi lại; gọi lại thất bại thì trả lỗi có
+/// cấu trúc, không bao giờ trả bản cũ kèm lời xin lỗi.
+model RealtimeCache {
+  /// sha256 của tên tool cộng tham số ĐÃ CHUẨN HOÁ. Xem `cacheKey` trong
+  /// server/infra/realtime/cache.ts để biết vì sao phải làm tròn toạ độ trước khi băm.
+  key String @id
+
+  tool    String
+  payload Json
+  /// Khoá nhà cung cấp đã trả dữ liệu. Giữ lại để câu trả lời ghi được nguồn, và để khi đổi nhà
+  /// cung cấp thì nhận ra ngay những hàng cache còn của nhà cũ.
+  source String
+
+  /// Thời điểm gọi API GỐC, không phải thời điểm ghi hàng này. Đây là mốc mà Validator ở giai
+  /// đoạn G dùng để chặn dữ kiện realtime quá TTL.
+  retrievedAt DateTime
+  expiresAt   DateTime
+
+  @@index([expiresAt])
+  @@index([tool])
+}
+
+// ---------------------------------------------------------------------------
+// Hạ tầng: bộ đếm hạn mức
+// ---------------------------------------------------------------------------
+
+/// Bộ đếm cho giới hạn tần suất và trần chi phí AI.
+///
+/// VÌ SAO NẰM Ở DATABASE chứ không chỉ trong bộ nhớ tiến trình. Bản đầu của
+/// server/middleware/rateLimit.ts đếm bằng một Map, và ghi chú ở đó đã nói thẳng hai hệ quả:
+/// chạy nhiều instance thì mỗi instance đếm riêng, và số đếm mất khi khởi động lại. Cả hai đều
+/// biến giới hạn thành thứ trang trí đúng vào lúc cần nó nhất — kẻ dò mật khẩu chỉ cần chờ một
+/// lần deploy, hoặc rải request cho đủ số instance. Postgres đã là phụ thuộc bắt buộc của dự án
+/// nên dùng nó không thêm hạ tầng mới, khác với Redis.
+///
+/// KHOÁ ĐƯỢC BĂM, KHÔNG LƯU NGUYÊN VĂN. Khoá thật chứa email hoặc địa chỉ IP, nên một bảng lưu
+/// nguyên văn sẽ dần trở thành danh sách email đã từng đăng nhập và IP đã từng gọi — thứ không ai
+/// định thu thập và cũng không có lý do giữ. `scope` giữ ở dạng đọc được để người vận hành đếm
+/// được theo nhóm mà không cần biết danh tính nào.
+model RateLimit {
+  /// sha256 của khoá thật. Xem `hashKey` trong server/infra/rateLimitStore.ts.
+  key String @id
+
+  /// Nhóm giới hạn đã sinh ra hàng này: "ip-path", "login-email", "ai-identity", "ai-global".
+  scope String
+
+  count Int @default(0)
+
+  /// Cuối cửa sổ hiện tại. Mọi phép so đều dùng `now()` của Postgres chứ không phải đồng hồ của
+  /// tiến trình web: nhiều instance thì có nhiều đồng hồ, và một cửa sổ tính theo đồng hồ lệch
+  /// là một cửa sổ dài hơn hoặc ngắn hơn mức đã khai.
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@index([scope])
+}
