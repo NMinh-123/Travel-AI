@@ -176,6 +176,13 @@ lúc build thay vì lọt vào bundle gửi ra trình duyệt.
 | `npm run test:e2e`      | Test end-to-end bằng Playwright, không gọi model thật     |
 | `npm run db:studio`     | Mở Prisma Studio                                          |
 
+**Tắt `npm run dev` trước khi chạy `npm run build` trên Windows.** Server dev giữ mở
+`node_modules/.prisma/client/query_engine-windows.dll.node`, nên `prisma generate` không thay được
+file đó và dừng với `EPERM: operation not permitted, rename`. Bản build vẫn ra nếu chạy tay
+`npm run build:client && npm run build:server`, nhưng khi đó Prisma Client là bản sinh từ lần
+trước — chỉ đúng chừng nào `db/schema.prisma` chưa đổi, và đó là thứ dễ quên đúng lúc vừa sửa
+lược đồ.
+
 Kiểm thử thời gian dùng ngày cố định, không cần khoá mô hình, database hoặc dịch vụ embedding.
 Với Node.js 24, nếu môi trường hạn chế quyền khiến esbuild không nạp được cấu hình test, có thể
 chẩn đoán bằng `npm test -- --configLoader native`. Lệnh này không thay thế việc kiểm tra

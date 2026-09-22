@@ -189,6 +189,33 @@ export class AiUnavailableError extends Error {
 }
 
 /**
+ * ĐIỂM CUỐI CHẬP CHỜN KHÔNG PHẢI LÀ LƯỢT HỎNG.
+ *
+ * Vòng lặp thử lại bên dưới sinh ra cho một kiểu hỏng duy nhất — phản hồi không phân giải được —
+ * còn một lỗi HTTP từ điểm cuối thì ném thẳng ra ngoài, và với khách đó là một lượt chat chết
+ * hẳn. Nhưng hai thứ ấy đáng được đối xử như nhau: ngày 2026-09-22, api.shopaikey.com trả "Dịch
+ * vụ đang quá tải" cho một lượt rồi chạy đúng ba lượt liền ngay sau đó, và chính một nhịp như
+ * vậy đã giết trọn hai lần chạy đánh giá. Một request lại là đủ để lượt đó thành công.
+ *
+ * CHỈ thử lại những mã nói rằng "lúc khác thử lại có thể được": quá tải, hết hạn mức tức thời,
+ * lỗi phía máy chủ. Yêu cầu sai (400), khoá sai (401/403) hay model không tồn tại (404) thì thử
+ * lại bao nhiêu lần cũng ra đúng câu trả lời đó, mà mỗi lần lại tính thêm một lượt vào hạn mức.
+ */
+const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);
+const TRANSIENT_BACKOFF_MS = 700;
+
+function isTransientProviderError(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status;
+  if (typeof status === "number") return TRANSIENT_STATUS.has(status);
+  // Proxy có thể gói lỗi lại và làm mất `status`; khi đó chỉ còn câu chữ để dựa vào.
+  return /overload|unavailable|try again|quá tải/i.test(String((error as Error | null)?.message ?? ""));
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Một lần gọi sinh nội dung có schema, kèm đo độ trễ và token.
  *
  * `data` trả về null khi model trả JSON không đọc được — cố tình không throw, vì mỗi tác tử
@@ -235,16 +262,25 @@ export async function generateStructured<T>(call: StructuredCall): Promise<Struc
      */
     await chargeModelCall();
 
-    response = await ai.models.generateContent({
-      model,
-      contents: call.contents,
-      config: {
-        ...(call.systemInstruction ? { systemInstruction: call.systemInstruction } : {}),
-        temperature: call.temperature ?? 0.7,
-        responseMimeType: "application/json",
-        responseSchema: call.schema,
-      },
-    });
+    try {
+      response = await ai.models.generateContent({
+        model,
+        contents: call.contents,
+        config: {
+          ...(call.systemInstruction ? { systemInstruction: call.systemInstruction } : {}),
+          temperature: call.temperature ?? 0.7,
+          responseMimeType: "application/json",
+          responseSchema: call.schema,
+        },
+      });
+    } catch (error) {
+      if (attempt >= MAX_PARSE_RETRIES || !isTransientProviderError(error)) throw error;
+      console.warn(
+        `Gemini (${model}): điểm cuối trả lỗi tạm thời, thử lại ${attempt + 1}/${MAX_PARSE_RETRIES}.`,
+      );
+      await wait(TRANSIENT_BACKOFF_MS * (attempt + 1));
+      continue;
+    }
 
     data = safeJsonParse(response.text) as T | null;
     if (data !== null) break;
@@ -425,38 +461,54 @@ export async function generateStructuredStream<T>(call: StreamingCall): Promise<
     raw = "";
     let emitted = "";
 
-    const stream = await ai.models.generateContentStream({
-      model,
-      contents: call.contents,
-      config: {
-        ...(call.systemInstruction ? { systemInstruction: call.systemInstruction } : {}),
-        temperature: call.temperature ?? 0.7,
-        responseMimeType: "application/json",
-        responseSchema: call.schema,
-      },
-    });
+    /**
+     * Lỗi tạm thời của điểm cuối được xử lý y như bên `generateStructured`, nhưng ở đây nó bao
+     * trùm CẢ vòng đọc luồng: một lượt streaming có thể đứt giữa chừng, và khi đó phần chữ đã đẩy
+     * ra thuộc về một câu trả lời không bao giờ hoàn thành. Lượt thử sau mở đầu bằng `onReset`
+     * ngay đầu vòng lặp, nên khách thấy câu trả lời được viết lại từ đầu chứ không thấy hai mẩu
+     * dán vào nhau.
+     */
+    try {
+      const stream = await ai.models.generateContentStream({
+        model,
+        contents: call.contents,
+        config: {
+          ...(call.systemInstruction ? { systemInstruction: call.systemInstruction } : {}),
+          temperature: call.temperature ?? 0.7,
+          responseMimeType: "application/json",
+          responseSchema: call.schema,
+        },
+      });
 
-    for await (const chunk of stream) {
-      if (chunk.text) raw += chunk.text;
-      // Chunk cuối mang usageMetadata; các chunk trước để trống. Ghi đè để giữ bản đầy đủ nhất.
-      if (chunk.usageMetadata) usage = chunk.usageMetadata;
-      if (!call.onDelta) continue;
+      for await (const chunk of stream) {
+        if (chunk.text) raw += chunk.text;
+        // Chunk cuối mang usageMetadata; các chunk trước để trống. Ghi đè để giữ bản đầy đủ nhất.
+        if (chunk.usageMetadata) usage = chunk.usageMetadata;
+        if (!call.onDelta) continue;
 
-      const shown = partialReplyText(raw);
+        const shown = partialReplyText(raw);
 
-      /**
-       * Chuỗi đã đẩy phải luôn là TIỀN TỐ của chuỗi hiện tại. Không còn đúng nghĩa là hình dạng
-       * đầu ra vừa đổi — đoán nhầm văn xuôi ở chunk đầu rồi hoá ra là JSON. Khi đó xoá và đẩy lại
-       * từ đầu; đây cũng chính là lý do `onDelta` không bao giờ được coi là kết quả cuối cùng.
-       */
-      if (!shown.startsWith(emitted)) {
-        call.onReset?.();
-        emitted = "";
+        /**
+         * Chuỗi đã đẩy phải luôn là TIỀN TỐ của chuỗi hiện tại. Không còn đúng nghĩa là hình dạng
+         * đầu ra vừa đổi — đoán nhầm văn xuôi ở chunk đầu rồi hoá ra là JSON. Khi đó xoá và đẩy lại
+         * từ đầu; đây cũng chính là lý do `onDelta` không bao giờ được coi là kết quả cuối cùng.
+         */
+        if (!shown.startsWith(emitted)) {
+          call.onReset?.();
+          emitted = "";
+        }
+        if (shown.length > emitted.length) {
+          call.onDelta(shown.slice(emitted.length));
+          emitted = shown;
+        }
       }
-      if (shown.length > emitted.length) {
-        call.onDelta(shown.slice(emitted.length));
-        emitted = shown;
-      }
+    } catch (error) {
+      if (attempt >= MAX_PARSE_RETRIES || !isTransientProviderError(error)) throw error;
+      console.warn(
+        `Gemini (${model}) streaming: điểm cuối trả lỗi tạm thời, thử lại ${attempt + 1}/${MAX_PARSE_RETRIES}.`,
+      );
+      await wait(TRANSIENT_BACKOFF_MS * (attempt + 1));
+      continue;
     }
 
     data = safeJsonParse(raw) as T | null;
