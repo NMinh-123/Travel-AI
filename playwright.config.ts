@@ -50,6 +50,17 @@ export default defineConfig({
         // Không bật sidecar: mọi lượt nhúng đã đi qua máy chủ giả.
         EMBEDDING_AUTOSTART: "false",
         RERANK_ENABLED: "false",
+        /**
+         * Bộ đếm hạn mức trong BỘ NHỚ, không phải trong database.
+         *
+         * Cả bộ E2E đi ra từ một IP, nên 15 lượt đăng ký của nó dùng chung đúng một bộ đếm với
+         * trần 20 lượt/10 phút. Bộ đếm ở database sống lâu hơn tiến trình server, nên chạy lại
+         * bộ test trong cùng cửa sổ đó — hoặc một lần `--retries` ở CI — là nhận 429 và đỏ ở
+         * những bài không liên quan gì tới giới hạn tần suất. Ở bộ nhớ thì mỗi lần server khởi
+         * động là một bộ đếm sạch. Hành vi giới hạn không đổi, chỉ đổi nơi giữ số đếm; phần
+         * kiểm chính giới hạn đó nằm ở tầng integration.
+         */
+        RATE_LIMIT_STORE: "memory",
         // Ngưỡng liên quan về 0: E2E không đo chất lượng truy xuất, và một ngưỡng chặn ở đây sẽ
         // biến mọi lượt chat thành chuyển tiếp.
         RAG_MIN_VECTOR_SIMILARITY: "0",
