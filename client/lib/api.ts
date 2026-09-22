@@ -28,7 +28,13 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
 
   if (response.status === 204) return undefined as T;
 
-  const body = await response.json().catch(() => null);
+  const body = await response.json().catch(() => {
+    // HTML từ SPA/proxy hoặc JSON hỏng không được biến thành một kết quả thành công null.
+    if (response.ok) {
+      throw new ApiError('Máy chủ trả về phản hồi JSON không hợp lệ', response.status);
+    }
+    return null;
+  });
 
   if (!response.ok) {
     const message =

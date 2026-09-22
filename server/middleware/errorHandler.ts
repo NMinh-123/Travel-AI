@@ -18,7 +18,9 @@ export const apiErrorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
    * cũng không được ghi vào log lỗi server.
    */
   const isTooLarge = err?.type === "entity.too.large";
-  const status = isBadJson ? 400 : isTooLarge ? 413 : (err?.status ?? 500);
+  // Status từ SDK/proxy mô tả lỗi của upstream, không phải lỗi của người gọi API này.
+  // Các lỗi nghiệp vụ đã có nhánh trả lời riêng; lỗi chưa phân loại luôn là 500.
+  const status = isBadJson ? 400 : isTooLarge ? 413 : 500;
 
   if (!isBadJson && !isTooLarge) console.error("Unhandled API error:", err);
 
