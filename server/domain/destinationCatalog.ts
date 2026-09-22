@@ -1,11 +1,22 @@
 import type { Prisma } from '@prisma/client';
 import { WEBSITE_DESTINATIONS } from '@data/website/destinations';
-import { PLACE_IMAGES } from '@data/website/images';
+import { PLACE_IMAGES as COMMONS_IMAGES } from '@data/website/images';
+import { MANUAL_PLACE_IMAGES } from '@data/website/images-manual';
 import { findPlace } from '@data/places/index';
-import type { WebsiteDestination } from '@data/website/types';
+import type { ImageRef, WebsiteDestination } from '@data/website/types';
 import type { Destination, DestinationPhoto } from '@shared/types';
 
 export const DESTINATION_ILLUSTRATION = '/destination-illustration.svg';
+
+/**
+ * Ảnh Commons trước, ảnh chưa rõ giấy phép chỉ lấp chỗ Commons bỏ trống.
+ *
+ * Thứ tự spread này là quy tắc chứ không phải tiểu tiết: một slug có ảnh trong cả hai nguồn thì
+ * bản Commons thắng, vì chỉ bản đó có giấy phép kiểm chứng được. Nhờ vậy, hôm nào có người tải
+ * ảnh Thác Tiên lên Commons thì chỉ cần chạy lại script thu thập là ảnh chưa rõ giấy phép tự bị
+ * thay, không phải nhớ đi xoá tay ở @data/website/images-manual.
+ */
+const PLACE_IMAGES: Record<string, ImageRef[]> = { ...MANUAL_PLACE_IMAGES, ...COMMONS_IMAGES };
 const bySlug = new Map(WEBSITE_DESTINATIONS.map(d => [d.slug, d]));
 export function destinationContent(slug: string): WebsiteDestination | undefined { return bySlug.get(slug); }
 
@@ -20,7 +31,7 @@ export function destinationPhotos(slug: string, urls: string[]): DestinationPhot
     if (!image) return [];
     return [{ url, kind: own.has(url) ? 'place' as const : 'area' as const,
       regionLabel: sourceKey ? findPlace(sourceKey)?.name ?? 'Hà Giang' : 'Hà Giang', credit: image.credit,
-      license: image.license, sourcePage: image.sourcePage }];
+      license: image.license, sourcePage: image.sourcePage, licenseVerified: image.licenseVerified === true }];
   });
 }
 

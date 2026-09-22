@@ -88,7 +88,7 @@ export const WEBSITE_DESTINATIONS: WebsiteDestination[] = [
     lng: 104.9411,
     recommendedStayHours: 0.5,
     localFood: ["Hồng không hạt Quản Bạ"],
-    imageSlug: "quan-ba",
+    imageSlug: "nui-doi-co-tien",
     sortOrder: 2,
   },
   {
@@ -116,7 +116,7 @@ export const WEBSITE_DESTINATIONS: WebsiteDestination[] = [
     lng: 105.1017,
     recommendedStayHours: 1,
     localFood: ["Cơm lam", "Gà đen"],
-    imageSlug: "yen-minh",
+    imageSlug: "rung-thong-yen-minh",
     sortOrder: 3,
   },
   {
@@ -147,7 +147,7 @@ export const WEBSITE_DESTINATIONS: WebsiteDestination[] = [
     // Khoá riêng KHÔNG còn ảnh, và lý do đáng ghi: tìm "Du Gia waterfall" trên Commons trả về
     // toàn ảnh Vườn quốc gia Nahanni ở CANADA. Bản trước không có bộ lọc liên quan nên đã nhận
     // chúng làm ảnh thác Du Già. Nay dùng ảnh vùng Du Già — đúng bối cảnh, dù không phải thác.
-    imageSlug: "du-gia",
+    imageSlug: "thac-du-gia",
     sortOrder: 4,
   },
   {
@@ -176,7 +176,7 @@ export const WEBSITE_DESTINATIONS: WebsiteDestination[] = [
     recommendedStayHours: 0.5,
     localFood: ["Bánh tam giác mạch"],
     // Dốc dẫn vào thung lũng Sủng Là, nên ảnh Sủng Là là bối cảnh gần nhất.
-    imageSlug: "sung-la",
+    imageSlug: "doc-tham-ma",
     sortOrder: 5,
   },
   {
@@ -203,7 +203,7 @@ export const WEBSITE_DESTINATIONS: WebsiteDestination[] = [
     lng: 105.19517,
     recommendedStayHours: 0.5,
     localFood: ["Bánh tam giác mạch", "Rượu ngô"],
-    imageSlug: "sung-la",
+    imageSlug: "duong-hanh-phuc",
     sortOrder: 6,
   },
   {
@@ -230,7 +230,7 @@ export const WEBSITE_DESTINATIONS: WebsiteDestination[] = [
     lng: 105.26215,
     recommendedStayHours: 1.5,
     localFood: ["Thắng cố", "Bánh cuốn Đồng Văn"],
-    imageSlug: "dong-van",
+    imageSlug: "dinh-thu-ho-vuong",
     sortOrder: 7,
   },
   {
@@ -376,7 +376,7 @@ export const WEBSITE_DESTINATIONS: WebsiteDestination[] = [
     // Dùng ảnh vùng Hoàng Su Phì: ảnh đúng nội dung trên Commons có tên "Một góc ruộng ở bản Nậm
     // Ty" — Nậm Ty đúng là ở Hoàng Su Phì, nhưng tên file không chia sẻ token nào với từ khoá nên
     // bộ lọc liên quan loại nó. Đây là cái giá của bộ lọc, và trả giá vậy vẫn đáng.
-    imageSlug: "hoang-su-phi",
+    imageSlug: "ruong-bac-thang-hoang-su-phi",
     sortOrder: 12,
   },
   ...EXPANDED_DESTINATIONS,

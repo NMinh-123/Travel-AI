@@ -39,6 +39,17 @@ export interface ImageRef {
   license: string;
   /** Trang mô tả trên Commons, để người xem kiểm được xuất xứ. */
   sourcePage: string;
+  /**
+   * Giấy phép đã được XÁC MINH từ metadata của Commons, không phải do người gõ vào.
+   *
+   * Chỉ `scripts/fetch-place-images.ts` đặt cờ này, và chỉ sau khi giấy phép đã qua bộ lọc
+   * `ALLOWED_LICENSE`. Ảnh trong @data/website/images-manual KHÔNG có cờ này vì nguồn của chúng
+   * không tuyên bố giấy phép nào.
+   *
+   * Giao diện dùng nó để quyết định có dẫn về trang gốc hay không: một liên kết "xem giấy phép"
+   * trỏ tới trang không hề nói gì về giấy phép thì tệ hơn là không có liên kết.
+   */
+  licenseVerified?: boolean;
   widthPx: number;
 }
 

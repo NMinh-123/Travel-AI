@@ -20,13 +20,11 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({ destinations
   const [category, setCategory] = useState('all');
   const [region, setRegion] = useState('all');
   const [query, setQuery] = useState('');
-  const [expandedOnly, setExpandedOnly] = useState(false);
   const [favoriteError, setFavoriteError] = useState('');
-  const filtered = filterDestinations(destinations, { category, region, query, expandedOnly });
+  const filtered = filterDestinations(destinations, { category, region, query });
   const regions = [...new Set(destinations.map(d => d.district))];
-  const expandedCount = destinations.filter(d => d.collection === 'expanded-20260918').length;
-  const hasFilters = category !== 'all' || region !== 'all' || Boolean(query) || expandedOnly;
-  const clear = () => { setCategory('all'); setRegion('all'); setQuery(''); setExpandedOnly(false); };
+  const hasFilters = category !== 'all' || region !== 'all' || Boolean(query);
+  const clear = () => { setCategory('all'); setRegion('all'); setQuery(''); };
 
   return <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16" aria-labelledby="explore-heading">
     <header className="mb-8 max-w-3xl">
@@ -61,10 +59,9 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({ destinations
           {c.label} <span className="ml-1.5 opacity-75">{destinations.filter(d => c.id === 'all' || d.category === c.id).length}</span>
         </button>)}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#dce4df] mt-5 pt-3">
-        <label className="flex min-h-11 items-center gap-2 text-sm text-[#3e4947]"><input type="checkbox" checked={expandedOnly} onChange={e => setExpandedOnly(e.target.checked)} className="w-4 h-4 accent-[#005c55]" />Chỉ xem {expandedCount} điểm bổ sung</label>
-        {hasFilters && <button onClick={clear} className="min-h-11 px-2 text-sm underline text-[#005c55]">Xóa bộ lọc</button>}
-      </div>
+      {hasFilters && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#dce4df] mt-5 pt-3">
+        <button onClick={clear} className="min-h-11 px-2 text-sm underline text-[#005c55]">Xóa bộ lọc</button>
+      </div>}
     </div>
     <p role="status" aria-live="polite" className="text-sm text-[#53645f] mt-6 mb-4">Hiển thị {filtered.length} / {destinations.length} điểm đến</p>
     {favoriteError && <p role="alert" className="mb-4 text-sm text-red-700">{favoriteError}</p>}
@@ -73,7 +70,6 @@ export const DestinationsGrid: React.FC<DestinationsGridProps> = ({ destinations
         <div className="relative h-60 overflow-hidden">
           <DestinationImage photo={dest.photos?.[0] ?? { url: dest.imageUrl, ...dest.imageMeta, kind: dest.imageMeta?.kind ?? 'illustration' }} name={dest.vietnameseName} />
           <button onClick={() => onSelectDestination(dest)} className="absolute inset-0 z-10 focus-visible:outline-4 focus-visible:-outline-offset-4 focus-visible:outline-[#005c55]" aria-label={`Xem chi tiết ${dest.vietnameseName}`} />
-          {dest.collection === 'expanded-20260918' && <span className="absolute top-4 left-4 z-20 pointer-events-none bg-white/95 text-[#005c55] text-xs font-semibold rounded-full px-3 py-1.5">Bổ sung</span>}
           <button id={`btn-fav-${dest.id}`} aria-label={`${isFavorite(dest.id) ? 'Bỏ lưu' : 'Lưu'} ${dest.vietnameseName}`} aria-pressed={isFavorite(dest.id)}
             onClick={async () => { setFavoriteError(''); if (!await toggleFavorite(dest.id)) setFavoriteError('Không lưu được địa danh. Vui lòng thử lại.'); }}
             className={`absolute top-3 right-3 z-20 w-11 h-11 rounded-full flex items-center justify-center ${isFavorite(dest.id) ? 'bg-rose-50 text-rose-700' : 'bg-white/90 text-[#005c55]'}`}>

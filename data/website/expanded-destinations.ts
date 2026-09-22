@@ -29,7 +29,7 @@ export const EXPANDED_DESTINATIONS: WebsiteDestination[] = [
       "Gà đồi",
       "Cá bỗng nấu măng chua"
     ],
-    "imageSlug": "thon-tha",
+    "imageSlug": "tp-ha-giang",
     "collection": "expanded-20260918",
     "sourceLinks": [
       {
@@ -67,7 +67,7 @@ export const EXPANDED_DESTINATIONS: WebsiteDestination[] = [
       "Bữa cơm gia đình đặt trước",
       "Cá và rau theo nguồn địa phương"
     ],
-    "imageSlug": "ho-noong",
+    "imageSlug": "vi-xuyen",
     "collection": "expanded-20260918",
     "sourceLinks": [
       {

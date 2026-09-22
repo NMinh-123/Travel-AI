@@ -34,11 +34,12 @@ const USER_AGENT = "HaGiangTravel-DataBot/1.0 (du an hoc tap; thu thap anh co gi
  * Nghỉ giữa hai lượt gọi.
  *
  * Con số này ĐO ĐƯỢC, không phải đoán: ở 700 ms, Commons trả HTTP 429 sau khoảng mười một lượt và
- * hai mươi mốt truy vấn còn lại thất bại sạch. 2,5 giây là mức chạy hết danh sách mà không bị
- * chặn. Nếu thêm nhiều truy vấn nữa mà lại gặp 429 thì nới tiếp chứ đừng bỏ phép chờ — API này
- * miễn phí và không cần khoá, nên tôn trọng hạn mức của họ là điều kiện để còn dùng được.
+ * hai mươi mốt truy vấn còn lại thất bại sạch. 2,5 giây chạy được danh sách 32 truy vấn, nhưng khi
+ * danh sách lên hơn 40 thì vẫn gặp 429 giữa đường, nên nới lên 3,5 giây. Thêm truy vấn nữa mà lại
+ * bị chặn thì nới tiếp chứ đừng bỏ phép chờ — API này miễn phí và không cần khoá, nên tôn trọng
+ * hạn mức của họ là điều kiện để còn dùng được.
  */
-const DELAY_MS = 2500;
+const DELAY_MS = 3500;
 
 /** Chờ khi bị chặn tần suất. Dài hơn hẳn DELAY_MS vì 429 nghĩa là nhịp hiện tại đã quá nhanh. */
 const RATE_LIMIT_WAIT_MS = 12000;
@@ -57,33 +58,67 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const ALLOWED_LICENSE = ["cc0", "cc by 1", "cc by 2", "cc by 3", "cc by 4", "cc by-sa", "public domain", "pd"];
 
 /**
- * Từ khoá tra ảnh cho từng slug trong @data/places.
+ * Nguồn ảnh cho từng slug trong @data/places.
  *
- * Dùng tên KHÔNG DẤU và có kèm "Ha Giang" ở những chỗ tên riêng dễ trùng với địa danh khác, vì
- * người tải ảnh lên Commons phần lớn đặt tên file bằng tiếng Anh hoặc tiếng Việt không dấu.
+ * HAI CÁCH LẤY, và `files` được ưu tiên hơn `search`:
+ *
+ *  - `files`: tên tệp Commons ĐÍCH DANH, đã duyệt bằng mắt qua cây thể loại Hà Giang
+ *    (Category:Quan Ba District, Category:Dong Van District, Category:Hmong Lord's Palace...).
+ *  - `search`: tra theo từ khoá như trước, dùng cho các slug vùng và những chỗ chưa duyệt tay.
+ *
+ * VÌ SAO PHẢI THÊM `files`. Tra theo từ khoá chọn ảnh thay người, và nó chọn tệ ở đúng những địa
+ * danh nhỏ: Commons xếp kết quả theo độ liên quan của công cụ tìm, nên khi không có ảnh nào thật
+ * sự khớp thì nó vẫn trả về thứ gì đó. Đo trên chính danh sách này: "Thac Tien waterfall" trả về
+ * thác Cát Cát ở Sa Pa, "Nam Dan ancient stone" trả về khu mộ cổ ở Cần Giuộc, "Lung Tam" trả về
+ * một vịnh ở Hồng Kông, còn "Ho Noong" trả về một cửa hàng ở Chicago. Bộ lọc token chặn được phần
+ * lớn, nhưng thứ lọt lưới thì lọt im lặng — ảnh thật, giấy phép hợp lệ, kích thước đạt, chỉ là
+ * không phải nơi đang nói tới. Mười ba điểm vì thế phải mượn ảnh của cả vùng.
+ *
+ * Duyệt thể loại thì ngược lại: người đóng góp đã xếp ảnh vào đúng huyện, nên tên tệp như
+ * "Động Lùng Khúy (47694355042).jpg" hay "Thảo nguyên Suôi Thầu - NKS.jpg" là chỉ dẫn đáng tin
+ * hơn bất kỳ điểm số liên quan nào. Giấy phép, tác giả và kích thước vẫn lấy từ API như cũ —
+ * chỉ có bước CHỌN ẢNH là chuyển từ máy đoán sang người duyệt.
+ *
+ * Slug nào không có mặt ở đây, hoặc có mà Commons không còn ảnh đạt điều kiện, thì không có ảnh
+ * riêng và giao diện dùng ảnh vùng kèm nhãn "Ảnh khu vực". Thà vậy còn hơn gán một tấm ảnh chụp
+ * nơi khác cho một địa danh.
  */
-const QUERIES: { slug: string; search: string }[] = [
+const QUERIES: { slug: string; search?: string; files?: string[] }[] = [
   { slug: "deo-ma-pi-leng", search: "Ma Pi Leng pass" },
   { slug: "hem-tu-san", search: "Tu San canyon Nho Que" },
   { slug: "song-nho-que", search: "Nho Que river" },
-  { slug: "cot-co-lung-cu", search: "Lung Cu flag tower" },
-  { slug: "doc-tham-ma", search: "Tham Ma slope Ha Giang" },
-  { slug: "pho-co-dong-van", search: "Dong Van old town" },
+  // Ảnh cột cờ nhìn từ dưới lên hầu hết là ảnh dọc và bị loại; hai tệp này là ảnh ngang.
+  { slug: "cot-co-lung-cu", files: ["Lá cờ Việt Nam trên đỉnh Cột cờ Lũng Cú.JPG", "Cotcolungcu.jpg"] },
+  { slug: "doc-tham-ma", files: ["Dốc Thẩm Mã 2022 - NKS.jpg", "Tham Ma pass - Dong Van.jpg"] },
+  { slug: "pho-co-dong-van", files: ["Cho Pho Co Dong Van in 2014.jpg", "Phỗ Cổ.jpg", "Covered market of Dong Van in 2014.jpg"] },
+  // Cổng Trời Quản Bạ: Commons chưa có ảnh nào của riêng đài quan sát. Giữ tra từ khoá để lần
+  // chạy sau tự bắt được nếu có người tải lên; tới lúc đó thẻ vẫn dùng ảnh vùng Quản Bạ.
   { slug: "cong-troi-quan-ba", search: "Quan Ba heaven gate" },
-  { slug: "nui-doi-co-tien", search: "Quan Ba twin mountain" },
-  { slug: "thac-du-gia", search: "Du Gia waterfall" },
-  { slug: "rung-thong-yen-minh", search: "Yen Minh pine forest" },
-  { slug: "dinh-thu-ho-vuong", search: "Vuong mansion Sa Phin" },
-  { slug: "ruong-bac-thang-hoang-su-phi", search: "Hoang Su Phi terraced field" },
+  { slug: "nui-doi-co-tien", files: ["Núi Cô Tiên, Quản Bạ (47742798901).jpg", "Fairy Hill 2012 - panoramio.jpg"] },
+  { slug: "thac-du-gia", files: ["Du Già.jpg"] },
+  { slug: "rung-thong-yen-minh", files: ["Needle trees in the Yen Minh district 2.jpg", "Autumn comes on TerraceField-YenMinh HaGiang Vietnam.jpg"] },
+  { slug: "dinh-thu-ho-vuong", files: ["Dinh thự vua Mèo họ Vương - Vuong’s Palace, Đồng Văn.jpg", "Sa Phin palais hmong entree.jpg", "Sa Phin palais hmong cour 2.jpg", "SaPhin entrance.JPG"] },
+  { slug: "ruong-bac-thang-hoang-su-phi", files: ["Ruộng bậc thang ở Hoàng Su Phì.jpg", "Ruộng bậc thang Bản Phùng 1 - NKS.jpg", "Bản Phùng - NKS.jpg"] },
   { slug: "cao-nguyen-da-dong-van", search: "Dong Van karst plateau" },
-  { slug: "deo-bac-sum", search: "Bac Sum Ha Giang" },
-  { slug: "doc-chin-khoanh", search: "Sung La valley Ha Giang" },
+  { slug: "deo-bac-sum", files: ["Dốc Bắc Sum (46762031595).jpg"] },
+  // Dốc Chín Khoanh nằm trên đoạn Phố Cáo; Commons chưa có ảnh nào chụp đúng con dốc. Giữ tra từ
+  // khoá để lần chạy sau tự bắt được nếu có người tải lên — khi đó nhớ trả `imageSlug` của nó về
+  // chính nó trong @data/website/destinations, vì hiện nó đang trỏ sang `duong-hanh-phuc`.
+  { slug: "doc-chin-khoanh", search: "Doc Chin Khoanh Pho Cao" },
+  // Ảnh đường núi trên quốc lộ 4C, dùng làm ảnh khu vực cho Dốc Chín Khoanh. Trước đây nó mượn
+  // ảnh vùng Sủng Là, mà ảnh bìa của bộ đó là một nếp nhà trình tường — một con dốc chín khúc
+  // thì không nên minh hoạ bằng ảnh nhà. Hai tệp này đều thuộc thể loại Dong Van District trên
+  // Commons, đúng huyện có con dốc, và chủ thể trong ảnh là đường đèo.
+  { slug: "duong-hanh-phuc", files: ["Mountainous road in the district of Dong Van in 2014.jpg", "Road in Hà Giang province.jpg"] },
   { slug: "tp-ha-giang", search: "Ha Giang city" },
   { slug: "dong-van", search: "Dong Van Ha Giang" },
   { slug: "meo-vac", search: "Meo Vac" },
   { slug: "yen-minh", search: "Yen Minh Ha Giang" },
   { slug: "quan-ba", search: "Quan Ba Ha Giang" },
-  { slug: "sung-la", search: "Sung La Ha Giang" },
+  // Vùng Vị Xuyên, thêm để Hồ Noong có ảnh khu vực đúng huyện thay vì hình minh hoạ. Tra từ khoá
+  // "Vi Xuyen" trả về cả phố Vị Xuyên ở Nam Định, nên chỉ đích danh ba tệp của Minh Tân.
+  { slug: "vi-xuyen", files: ["Minh Tân, Vị Xuyên, Hà Giang, Vietnam - panoramio.jpg", "Minh Tân, Vị Xuyên, Hà Giang, Vietnam - panoramio (1).jpg", "Minh Tân, Vị Xuyên, Hà Giang, Vietnam - panoramio (3).jpg"] },
+  { slug: "sung-la", files: ["Nhà trình tường ở Lũng Cẩm - NKS.jpg", "Sủng Là, Đồng Văn, Hà Giang, Vietnam - panoramio.jpg", "Sủng Là, Đồng Văn, Hà Giang, Vietnam - panoramio (2).jpg"] },
   { slug: "lung-cu", search: "Lung Cu Ha Giang" },
   { slug: "du-gia", search: "Du Gia Ha Giang" },
   { slug: "khau-vai", search: "Khau Vai" },
@@ -91,10 +126,27 @@ const QUERIES: { slug: string; search: string }[] = [
   { slug: "lung-tam", search: "Lung Tam linen Ha Giang" },
   { slug: "pho-bang", search: "Pho Bang Ha Giang" },
   { slug: "cho-phien-dong-van", search: "Dong Van market" },
-  { slug: "ban-lo-lo-chai", search: "Lo Lo Chai" },
-  { slug: "lang-det-lanh-lung-tam", search: "Hmong linen weaving Ha Giang" },
-  { slug: "cho-tinh-khau-vai", search: "Khau Vai love market" },
-  { slug: "ban-nam-dam", search: "Nam Dam Ha Giang" },
+  { slug: "ban-lo-lo-chai", files: ["Lô Lô Chải 2022 - NKS.jpg"] },
+  // Ảnh nghề dệt lanh chụp tại Quản Bạ — đúng nghề và đúng vùng của hợp tác xã Lùng Tám.
+  { slug: "lang-det-lanh-lung-tam", files: ["Quản Bạ, Vietnam - Linen making.jpg"] },
+  { slug: "cho-tinh-khau-vai", files: ["Chợ tình Khau Vai.jpg"] },
+  // Nặm Đăm: tra "Nam Dam" trả về Ba Chúc ở An Giang và một hồ chứa ở Hồng Kông. Không có ảnh.
+  { slug: "ban-nam-dam", search: "Nam Dam Quan Ba Ha Giang" },
+
+  // --- Mười ba điểm bổ sung của nhiệm vụ EXPLORE-26, trước đây không có mặt trong danh sách này
+  // nên không bao giờ được tra ảnh. Đó là lý do phần lớn chúng hiện ảnh minh hoạ.
+  { slug: "dong-lung-khuy", files: ["Động Lùng Khúy (47694355042).jpg"] },
+  { slug: "lang-van-hoa-pa-vi-ha", files: ["Ancient river valley in PaVi HaGiang Vietnam.jpg", "Rd4C & Valley in PaVi HaGiang Vietnam.jpg"] },
+  // Ảnh duy nhất đạt điều kiện cho Chiêu Lầu Thi chỉ 960px; "Chieu Lau Thi summit.jpg" là ảnh dọc
+  // 723x960 nên bị loại. Đủ dùng làm ảnh bìa nhưng không nét bằng các điểm khác.
+  { slug: "dinh-chieu-lau-thi", files: ["Đỉnh núi chiêu lầu thi.png"] },
+  { slug: "thao-nguyen-suoi-thau", files: ["Thảo nguyên Suôi Thầu - NKS.jpg", "Suôi Thầu - NKS.jpg", "NKS và thảo nguyên Suôi Thầu.jpg"] },
+  // Bốn slug dưới đây: đã duyệt hết cây thể loại Hà Giang trên Commons và KHÔNG có ảnh nào chụp
+  // đúng nơi. Giữ từ khoá để lần chạy sau tự bắt được nếu có người tải lên.
+  { slug: "thon-tha", search: "Tha village Ha Giang" },
+  { slug: "ho-noong", search: "Noong lake Vi Xuyen Ha Giang" },
+  { slug: "thac-tien-deo-gio", search: "Thac Tien Deo Gio Xin Man" },
+  { slug: "bai-da-co-nam-dan", search: "Nam Dan rock carving Xin Man" },
 ];
 
 interface Candidate {
@@ -262,6 +314,87 @@ async function search(term: string): Promise<Candidate[]> {
     .sort((a, b) => b.width - a.width);
 }
 
+/**
+ * Lấy metadata của những tệp Commons đã chọn đích danh.
+ *
+ * Giữ NGUYÊN THỨ TỰ trong danh sách thay vì xếp theo chiều rộng như `search`: ảnh đầu tiên là ảnh
+ * bìa, và với những tệp đã duyệt bằng mắt thì ảnh hợp nhất chưa chắc là ảnh to nhất. Bộ lọc giấy
+ * phép, định dạng và kích thước vẫn áp y như đường tra từ khoá — chọn tay không miễn cho tệp nào
+ * khỏi các điều kiện đó, và một tệp bị đổi giấy phép trên Commons sẽ tự rụng ở lần chạy sau.
+ */
+async function byTitles(titles: string[]): Promise<Candidate[]> {
+  const url = new URL(API);
+  url.searchParams.set("action", "query");
+  url.searchParams.set("titles", titles.map((t) => `File:${t}`).join("|"));
+  url.searchParams.set("prop", "imageinfo");
+  url.searchParams.set("iiprop", "url|size|extmetadata");
+  url.searchParams.set("format", "json");
+
+  let response: Response | null = null;
+
+  for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt += 1) {
+    response = await fetch(url, {
+      headers: { "User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(25000),
+    });
+
+    if (response.status !== 429) break;
+    if (attempt === MAX_RATE_LIMIT_RETRIES) break;
+
+    console.log(`      bị chặn tần suất, chờ ${RATE_LIMIT_WAIT_MS / 1000}s rồi thử lại`);
+    await sleep(RATE_LIMIT_WAIT_MS);
+  }
+
+  if (!response || !response.ok) {
+    throw new Error(`Commons trả HTTP ${response?.status ?? "không rõ"} cho ${titles.length} tệp chỉ định`);
+  }
+
+  const body = (await response.json()) as { query?: { pages?: Record<string, any> } };
+  const pages = Object.values(body.query?.pages ?? {});
+  const out: Candidate[] = [];
+
+  for (const wanted of titles) {
+    const page = pages.find((p: any) => String(p?.title ?? "").replace(/^File:/, "") === wanted);
+    const info = page?.imageinfo?.[0];
+    if (!info?.url) {
+      console.log(`      bỏ "${wanted}": Commons không còn tệp này`);
+      continue;
+    }
+
+    const meta = info.extmetadata ?? {};
+    const license = plainText(meta.LicenseShortName?.value ?? "");
+    if (!licenseAllowed(license)) {
+      console.log(`      bỏ "${wanted}": giấy phép "${license}" không cho phép dùng lại`);
+      continue;
+    }
+
+    const clean = new URL(info.url);
+    clean.search = "";
+    if (!/\.(jpe?g|png|webp)$/i.test(clean.pathname)) {
+      console.log(`      bỏ "${wanted}": định dạng không hiển thị trực tiếp được`);
+      continue;
+    }
+
+    const width = Number(info.width ?? 0);
+    const height = Number(info.height ?? 0);
+    if (width < 800 || width < height) {
+      console.log(`      bỏ "${wanted}": ${width}x${height}, quá nhỏ hoặc là ảnh dọc`);
+      continue;
+    }
+
+    out.push({
+      title: wanted,
+      url: thumbUrl(clean.toString(), wanted),
+      license,
+      credit: plainText(meta.Artist?.value ?? "") || "không rõ tác giả",
+      width,
+      height,
+    });
+  }
+
+  return out;
+}
+
 function escapeString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -269,14 +402,30 @@ function escapeString(value: string): string {
 async function main(): Promise<void> {
   const found: Record<string, Candidate[]> = {};
   const missing: string[] = [];
+  /**
+   * Slug thất bại vì LỖI GỌI API, khác hẳn slug không có ảnh nào đạt điều kiện.
+   *
+   * Phân biệt hai thứ này là bắt buộc, và đã có sự cố thật: một lần chạy bị Commons trả HTTP 429
+   * ở giữa danh sách, script vẫn ghi file như thường và hai slug `quan-ba` với
+   * `lang-det-lanh-lung-tam` mất sạch ảnh — trong khi ảnh của chúng vẫn còn nguyên trên Commons.
+   * Hậu quả không dừng ở đó: `quan-ba` là bộ ảnh mà Cổng Trời Quản Bạ mượn làm ảnh khu vực, nên
+   * một cái 429 nhất thời đã làm hai điểm đến rơi về hình minh hoạ, và tệp sai đó thì sẵn sàng
+   * được commit vì trông vẫn hợp lệ.
+   *
+   * Nay gặp lỗi gọi API thì KHÔNG ghi file. Giữ lại bản cũ đúng còn hơn ghi một bản mới thiếu, vì
+   * thiếu ảnh ở đây không làm gì hỏng ồn ào cả — nó chỉ âm thầm đổi ảnh thành hình minh hoạ.
+   */
+  const failed: string[] = [];
 
   for (const [index, query] of QUERIES.entries()) {
     if (index > 0) await sleep(DELAY_MS);
 
+    const how = query.files ? `${query.files.length} tệp chỉ định` : `tìm "${query.search}"`;
+
     try {
-      const candidates = await search(query.search);
+      const candidates = query.files ? await byTitles(query.files) : await search(query.search ?? "");
       if (!candidates.length) {
-        missing.push(`${query.slug} (tìm "${query.search}")`);
+        missing.push(`${query.slug} (${how})`);
         console.log(`  ${query.slug.padEnd(32)} không có ảnh đạt điều kiện`);
         continue;
       }
@@ -287,9 +436,20 @@ async function main(): Promise<void> {
           ` — bìa ${found[query.slug][0].width}px ${found[query.slug][0].license}`,
       );
     } catch (error: any) {
-      missing.push(`${query.slug} (lỗi: ${error?.message ?? error})`);
+      failed.push(`${query.slug} (${how}): ${error?.message ?? error}`);
       console.log(`  ${query.slug.padEnd(32)} LỖI ${error?.message ?? error}`);
     }
+  }
+
+  if (failed.length) {
+    console.error("");
+    console.error(`KHÔNG GHI FILE: ${failed.length} slug thất bại vì lỗi gọi API, không phải vì thiếu ảnh.`);
+    for (const item of failed) console.error(`  ${item}`);
+    console.error("");
+    console.error("Ghi bây giờ là xoá ảnh của những slug đó khỏi dữ liệu. Chờ vài phút rồi chạy lại;");
+    console.error("nếu vẫn bị chặn tần suất thì nới DELAY_MS ở đầu file.");
+    process.exitCode = 1;
+    return;
   }
 
   const lines: string[] = [
@@ -324,6 +484,9 @@ async function main(): Promise<void> {
       lines.push(
         `      sourcePage: "https://commons.wikimedia.org/wiki/File:${encodeURIComponent(c.title).replace(/%20/g, "_")}",`,
       );
+      // Mọi mục ra tới đây đều đã qua `licenseAllowed`, và giấy phép đọc từ metadata của Commons
+      // chứ không do ai gõ. Đó là điều kiện để giao diện dám dẫn người xem về trang giấy phép.
+      lines.push("      licenseVerified: true,");
       lines.push(`      widthPx: ${c.width},`);
       lines.push("    },");
     }

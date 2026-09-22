@@ -52,7 +52,7 @@ const DestinationDialog: React.FC<Omit<DestinationDetailModalProps, 'destination
       </div>}
     </div>
     <div className="p-5 sm:p-8">
-      <p className="text-xs uppercase tracking-widest font-semibold text-[#005c55]">{d.district}{d.collection === 'expanded-20260918' ? ' · Điểm bổ sung' : ''}</p>
+      <p className="text-xs uppercase tracking-widest font-semibold text-[#005c55]">{d.district}</p>
       <h2 id="destination-title" className="font-display text-2xl sm:text-4xl font-bold mt-2 leading-tight">{d.vietnameseName}</h2>
       <p className="mt-2 text-sm text-[#53645f]">{d.name}</p>
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-6 text-sm">

@@ -23,6 +23,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Hoach Le Dinh",
       license: "CC0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:M%C3%A3_P%C3%AD_L%C3%A8ng_Pass%2C_Vietnam.jpg",
+      licenseVerified: true,
       widthPx: 6000,
     },
     {
@@ -30,6 +31,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Khánh Hmoong",
       license: "CC BY 2.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Ma_Pi_Leng_Pass_winding_road_Ha_Giang_Vietnam.jpg",
+      licenseVerified: true,
       widthPx: 3896,
     },
     {
@@ -37,6 +39,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Ma_Pi_Leng_pass_plateau_in_2014.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
     {
@@ -44,6 +47,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Ma_Pi_Leng_pass_information_board.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
   ],
@@ -53,6 +57,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "NKSTTSSHNVN",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:TuSan_Canyon.jpg",
+      licenseVerified: true,
       widthPx: 6000,
     },
   ],
@@ -62,6 +67,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "NKSTTSSHNVN",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:S%C3%B4ng_Nho_Qu%E1%BA%BF_2022_-_NKS.jpg",
+      licenseVerified: true,
       widthPx: 6000,
     },
     {
@@ -69,6 +75,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "NKSTTSSHNVN",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Th%E1%BB%A7y_%C4%91i%E1%BB%87n_Nho_Qu%E1%BA%BF_1_-_NKS.jpg",
+      licenseVerified: true,
       widthPx: 6000,
     },
     {
@@ -76,53 +83,176 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Khoitran1957",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:S%C3%B4ng_Nho_Qu%E1%BA%BF.jpg",
+      licenseVerified: true,
       widthPx: 2844,
     },
   ],
   "cot-co-lung-cu": [
     {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Lung_Cu_flag_tower_of_Ha_Giang_in_2014_03.jpg/1280px-Lung_Cu_flag_tower_of_Ha_Giang_in_2014_03.jpg",
-      credit: "Vuong Tri Binh",
-      license: "CC BY-SA 4.0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Lung_Cu_flag_tower_of_Ha_Giang_in_2014_03.jpg",
-      widthPx: 3552,
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/L%C3%A1_c%E1%BB%9D_Vi%E1%BB%87t_Nam_tr%C3%AAn_%C4%91%E1%BB%89nh_C%E1%BB%99t_c%E1%BB%9D_L%C5%A9ng_C%C3%BA.JPG/1280px-L%C3%A1_c%E1%BB%9D_Vi%E1%BB%87t_Nam_tr%C3%AAn_%C4%91%E1%BB%89nh_C%E1%BB%99t_c%E1%BB%9D_L%C5%A9ng_C%C3%BA.JPG",
+      credit: "Leminhel at Vietnamese Wikipedia",
+      license: "Public domain",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:L%C3%A1_c%E1%BB%9D_Vi%E1%BB%87t_Nam_tr%C3%AAn_%C4%91%E1%BB%89nh_C%E1%BB%99t_c%E1%BB%9D_L%C5%A9ng_C%C3%BA.JPG",
+      licenseVerified: true,
+      widthPx: 3456,
     },
     {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Lung_Cu_flag_tower_of_Ha_Giang_in_2014_04.jpg/1280px-Lung_Cu_flag_tower_of_Ha_Giang_in_2014_04.jpg",
-      credit: "Vuong Tri Binh",
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c0/Cotcolungcu.jpg/1280px-Cotcolungcu.jpg",
+      credit: "Thái Nhi at vi.wikipedia",
+      license: "Public domain",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Cotcolungcu.jpg",
+      licenseVerified: true,
+      widthPx: 800,
+    },
+  ],
+  "doc-tham-ma": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/D%E1%BB%91c_Th%E1%BA%A9m_M%C3%A3_2022_-_NKS.jpg/1280px-D%E1%BB%91c_Th%E1%BA%A9m_M%C3%A3_2022_-_NKS.jpg",
+      credit: "NKSTTSSHNVN",
       license: "CC BY-SA 4.0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Lung_Cu_flag_tower_of_Ha_Giang_in_2014_04.jpg",
-      widthPx: 3552,
+      sourcePage: "https://commons.wikimedia.org/wiki/File:D%E1%BB%91c_Th%E1%BA%A9m_M%C3%A3_2022_-_NKS.jpg",
+      licenseVerified: true,
+      widthPx: 6000,
     },
     {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Lung_Cu_flag_tower_of_Ha_Giang_in_2014_05.jpg/1280px-Lung_Cu_flag_tower_of_Ha_Giang_in_2014_05.jpg",
-      credit: "Vuong Tri Binh",
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Tham_Ma_pass_-_Dong_Van.jpg/1280px-Tham_Ma_pass_-_Dong_Van.jpg",
+      credit: "NKSTTSSHNVN",
       license: "CC BY-SA 4.0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Lung_Cu_flag_tower_of_Ha_Giang_in_2014_05.jpg",
-      widthPx: 3552,
-    },
-    {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Lung_Cu_flag_tower_of_Ha_Giang_in_2014_06.jpg/1280px-Lung_Cu_flag_tower_of_Ha_Giang_in_2014_06.jpg",
-      credit: "Vuong Tri Binh",
-      license: "CC BY-SA 4.0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Lung_Cu_flag_tower_of_Ha_Giang_in_2014_06.jpg",
-      widthPx: 3552,
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Tham_Ma_pass_-_Dong_Van.jpg",
+      licenseVerified: true,
+      widthPx: 2048,
     },
   ],
   "pho-co-dong-van": [
     {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Dong_Van_old_town.jpg/1280px-Dong_Van_old_town.jpg",
-      credit: "HuangWending18072009",
-      license: "CC0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Dong_Van_old_town.jpg",
-      widthPx: 4096,
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Cho_Pho_Co_Dong_Van_in_2014.jpg/1280px-Cho_Pho_Co_Dong_Van_in_2014.jpg",
+      credit: "Vuong Tri Binh",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Cho_Pho_Co_Dong_Van_in_2014.jpg",
+      licenseVerified: true,
+      widthPx: 3552,
     },
     {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/A_view_over_the_old_city_Amsterdam_to_the_left%2C_and_sandy_construction_sites_right%3B_free_photo_Amsterdam_2005%2C_Fons_Heijnsbroek.jpg/1280px-A_view_over_the_old_city_Amsterdam_to_the_left%2C_and_sandy_construction_sites_right%3B_free_photo_Amsterdam_2005%2C_Fons_Heijnsbroek.jpg",
-      credit: "Fons Heijnsbroek",
-      license: "CC0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:A_view_over_the_old_city_Amsterdam_to_the_left%2C_and_sandy_construction_sites_right%3B_free_photo_Amsterdam_2005%2C_Fons_Heijnsbroek.jpg",
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Ph%E1%BB%97_C%E1%BB%95.jpg/1280px-Ph%E1%BB%97_C%E1%BB%95.jpg",
+      credit: "Khoitran1957",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Ph%E1%BB%97_C%E1%BB%95.jpg",
+      licenseVerified: true,
+      widthPx: 2844,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Covered_market_of_Dong_Van_in_2014.jpg/1280px-Covered_market_of_Dong_Van_in_2014.jpg",
+      credit: "Vuong Tri Binh",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Covered_market_of_Dong_Van_in_2014.jpg",
+      licenseVerified: true,
+      widthPx: 3552,
+    },
+  ],
+  "nui-doi-co-tien": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/N%C3%BAi_C%C3%B4_Ti%C3%AAn%2C_Qu%E1%BA%A3n_B%E1%BA%A1_%2847742798901%29.jpg/1280px-N%C3%BAi_C%C3%B4_Ti%C3%AAn%2C_Qu%E1%BA%A3n_B%E1%BA%A1_(47742798901).jpg",
+      credit: "Sketyl none",
+      license: "CC BY 2.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:N%C3%BAi_C%C3%B4_Ti%C3%AAn%2C_Qu%E1%BA%A3n_B%E1%BA%A1_(47742798901).jpg",
+      licenseVerified: true,
+      widthPx: 7010,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Fairy_Hill_2012_-_panoramio.jpg/1280px-Fairy_Hill_2012_-_panoramio.jpg",
+      credit: "黃逸樂（世界首窮）",
+      license: "CC BY 3.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Fairy_Hill_2012_-_panoramio.jpg",
+      licenseVerified: true,
+      widthPx: 3200,
+    },
+  ],
+  "thac-du-gia": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Du_Gi%C3%A0.jpg/1280px-Du_Gi%C3%A0.jpg",
+      credit: "NKSTTSSHNVN",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Du_Gi%C3%A0.jpg",
+      licenseVerified: true,
       widthPx: 2048,
+    },
+  ],
+  "rung-thong-yen-minh": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/Needle_trees_in_the_Yen_Minh_district_2.jpg/1280px-Needle_trees_in_the_Yen_Minh_district_2.jpg",
+      credit: "Vuong Tri Binh",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Needle_trees_in_the_Yen_Minh_district_2.jpg",
+      licenseVerified: true,
+      widthPx: 3552,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/Autumn_comes_on_TerraceField-YenMinh_HaGiang_Vietnam.jpg/1280px-Autumn_comes_on_TerraceField-YenMinh_HaGiang_Vietnam.jpg",
+      credit: "The original uploader was BacLuong at Vietnamese Wikipedia.",
+      license: "Public domain",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Autumn_comes_on_TerraceField-YenMinh_HaGiang_Vietnam.jpg",
+      licenseVerified: true,
+      widthPx: 2592,
+    },
+  ],
+  "dinh-thu-ho-vuong": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Dinh_th%E1%BB%B1_vua_M%C3%A8o_h%E1%BB%8D_V%C6%B0%C6%A1ng_-_Vuong%E2%80%99s_Palace%2C_%C4%90%E1%BB%93ng_V%C4%83n.jpg/1280px-Dinh_th%E1%BB%B1_vua_M%C3%A8o_h%E1%BB%8D_V%C6%B0%C6%A1ng_-_Vuong%E2%80%99s_Palace%2C_%C4%90%E1%BB%93ng_V%C4%83n.jpg",
+      credit: "Khánh Hmoong",
+      license: "CC BY 2.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Dinh_th%E1%BB%B1_vua_M%C3%A8o_h%E1%BB%8D_V%C6%B0%C6%A1ng_-_Vuong%E2%80%99s_Palace%2C_%C4%90%E1%BB%93ng_V%C4%83n.jpg",
+      licenseVerified: true,
+      widthPx: 3602,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/Sa_Phin_palais_hmong_entree.jpg/1280px-Sa_Phin_palais_hmong_entree.jpg",
+      credit: "Velvet",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Sa_Phin_palais_hmong_entree.jpg",
+      licenseVerified: true,
+      widthPx: 3782,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/39/Sa_Phin_palais_hmong_cour_2.jpg/1280px-Sa_Phin_palais_hmong_cour_2.jpg",
+      credit: "Velvet",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Sa_Phin_palais_hmong_cour_2.jpg",
+      licenseVerified: true,
+      widthPx: 3819,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/SaPhin_entrance.JPG/1280px-SaPhin_entrance.JPG",
+      credit: "Daniel Berthold",
+      license: "CC BY-SA 3.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:SaPhin_entrance.JPG",
+      licenseVerified: true,
+      widthPx: 2816,
+    },
+  ],
+  "ruong-bac-thang-hoang-su-phi": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Ru%E1%BB%99ng_b%E1%BA%ADc_thang_%E1%BB%9F_Ho%C3%A0ng_Su_Ph%C3%AC.jpg/1280px-Ru%E1%BB%99ng_b%E1%BA%ADc_thang_%E1%BB%9F_Ho%C3%A0ng_Su_Ph%C3%AC.jpg",
+      credit: "Quangpraha",
+      license: "CC0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Ru%E1%BB%99ng_b%E1%BA%ADc_thang_%E1%BB%9F_Ho%C3%A0ng_Su_Ph%C3%AC.jpg",
+      licenseVerified: true,
+      widthPx: 3800,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Ru%E1%BB%99ng_b%E1%BA%ADc_thang_B%E1%BA%A3n_Ph%C3%B9ng_1_-_NKS.jpg/1280px-Ru%E1%BB%99ng_b%E1%BA%ADc_thang_B%E1%BA%A3n_Ph%C3%B9ng_1_-_NKS.jpg",
+      credit: "NKSTTSSHNVN",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Ru%E1%BB%99ng_b%E1%BA%ADc_thang_B%E1%BA%A3n_Ph%C3%B9ng_1_-_NKS.jpg",
+      licenseVerified: true,
+      widthPx: 5883,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/B%E1%BA%A3n_Ph%C3%B9ng_-_NKS.jpg/1280px-B%E1%BA%A3n_Ph%C3%B9ng_-_NKS.jpg",
+      credit: "NKSTTSSHNVN",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:B%E1%BA%A3n_Ph%C3%B9ng_-_NKS.jpg",
+      licenseVerified: true,
+      widthPx: 6000,
     },
   ],
   "cao-nguyen-da-dong-van": [
@@ -131,6 +261,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "NKSTTSSHNVN",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Cao_nguy%C3%AAn_%C4%91%C3%A1_%C4%90%E1%BB%93ng_V%C4%83n_-_NKS.jpg",
+      licenseVerified: true,
       widthPx: 6000,
     },
     {
@@ -138,6 +269,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "NKSTTSSHNVN",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:B%C3%A3i_%C4%91%C3%A1_m%E1%BA%B7t_tr%C4%83ng_%C4%90%E1%BB%93ng_V%C4%83n_-_NKS.jpg",
+      licenseVerified: true,
       widthPx: 6000,
     },
     {
@@ -145,6 +277,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "NKSTTSSHNVN",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Tham_Ma_pass_-_Dong_Van.jpg",
+      licenseVerified: true,
       widthPx: 2048,
     },
     {
@@ -152,6 +285,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "BacLuong at Vietnamese Wikipedia",
       license: "Public domain",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Karst%40SinhLung_DongVan_HaGiang.jpg",
+      licenseVerified: true,
       widthPx: 1996,
     },
   ],
@@ -161,7 +295,26 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Sketyl none",
       license: "CC BY 2.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:D%E1%BB%91c_B%E1%BA%AFc_Sum_(46762031595).jpg",
+      licenseVerified: true,
       widthPx: 6022,
+    },
+  ],
+  "duong-hanh-phuc": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/Mountainous_road_in_the_district_of_Dong_Van_in_2014.jpg/1280px-Mountainous_road_in_the_district_of_Dong_Van_in_2014.jpg",
+      credit: "Vuong Tri Binh",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Mountainous_road_in_the_district_of_Dong_Van_in_2014.jpg",
+      licenseVerified: true,
+      widthPx: 3552,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Road_in_H%C3%A0_Giang_province.jpg/1280px-Road_in_H%C3%A0_Giang_province.jpg",
+      credit: "Benjamin Smith",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Road_in_H%C3%A0_Giang_province.jpg",
+      licenseVerified: true,
+      widthPx: 5496,
     },
   ],
   "tp-ha-giang": [
@@ -170,6 +323,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "HuangWending18072009",
       license: "CC0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Ha_Giang_City_Square.jpg",
+      licenseVerified: true,
       widthPx: 4096,
     },
     {
@@ -177,6 +331,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Idan Robbins",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:H%C3%A0_Giang_City.jpg",
+      licenseVerified: true,
       widthPx: 3864,
     },
     {
@@ -184,6 +339,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Hmong_specialities_restaurant_in_Ha_Giang_city_in_2014_02.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
     {
@@ -191,6 +347,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Hmong_specialities_restaurant_in_Ha_Giang_city_in_2014_04.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
   ],
@@ -200,6 +357,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "trungydang",
       license: "CC BY 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Tt._%C4%90%E1%BB%93ng_V%C4%83n%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(1).jpg",
+      licenseVerified: true,
       widthPx: 6864,
     },
     {
@@ -207,6 +365,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "trungydang",
       license: "CC BY 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Tt._%C4%90%E1%BB%93ng_V%C4%83n%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio.jpg",
+      licenseVerified: true,
       widthPx: 6316,
     },
     {
@@ -214,6 +373,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "trungydang",
       license: "CC BY 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Tt._%C4%90%E1%BB%93ng_V%C4%83n%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(9).jpg",
+      licenseVerified: true,
       widthPx: 4646,
     },
     {
@@ -221,6 +381,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "trungydang",
       license: "CC BY 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Tt._%C4%90%E1%BB%93ng_V%C4%83n%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(2).jpg",
+      licenseVerified: true,
       widthPx: 4192,
     },
   ],
@@ -230,6 +391,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "HuangWending18072009",
       license: "CC0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Meo_Vac_Commune_Square%2C_Tuyen_Quang_Province.jpg",
+      licenseVerified: true,
       widthPx: 4096,
     },
     {
@@ -237,6 +399,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "HuangWending18072009",
       license: "CC0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Central_Area_of_Meo_Vac_Commune%2C_Tuyen_Quang_Province.jpg",
+      licenseVerified: true,
       widthPx: 4096,
     },
     {
@@ -244,6 +407,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "kimjongdae",
       license: "CC BY 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:L%C5%A9ng_P%C3%B9%2C_M%C3%A8o_V%E1%BA%A1c%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio.jpg",
+      licenseVerified: true,
       widthPx: 4032,
     },
     {
@@ -251,6 +415,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Jaybeelarsay",
       license: "CC BY-SA 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Le_col_de_Ma_Pi_Leng_(Dong_Van-Meo_Vac).jpg",
+      licenseVerified: true,
       widthPx: 2592,
     },
   ],
@@ -260,6 +425,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Street_in_Yen_Minh_city_in_2014.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
     {
@@ -267,6 +433,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Needle_trees_in_the_Yen_Minh_district_1.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
     {
@@ -274,6 +441,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Shops_in_Yen_Minh_city_in_2014.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
     {
@@ -281,6 +449,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Road_in_Yen_Minh_district_in_2014.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
   ],
@@ -290,6 +459,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Benjamin Smith",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Qu%E1%BA%A3n_B%E1%BA%A1%2C_Vietnam_-_1.jpg",
+      licenseVerified: true,
       widthPx: 5496,
     },
     {
@@ -297,6 +467,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Benjamin Smith",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Qu%E1%BA%A3n_B%E1%BA%A1%2C_Vietnam_-_2.jpg",
+      licenseVerified: true,
       widthPx: 5496,
     },
     {
@@ -304,6 +475,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "trungydang",
       license: "CC BY 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:C%C3%A1n_T%E1%BB%B7%2C_Qu%E1%BA%A3n_B%E1%BA%A1%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio.jpg",
+      licenseVerified: true,
       widthPx: 3264,
     },
     {
@@ -311,15 +483,51 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "trungydang",
       license: "CC BY 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:C%C3%A1n_T%E1%BB%B7%2C_Qu%E1%BA%A3n_B%E1%BA%A1%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(1).jpg",
+      licenseVerified: true,
+      widthPx: 3264,
+    },
+  ],
+  "vi-xuyen": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Minh_T%C3%A2n%2C_V%E1%BB%8B_Xuy%C3%AAn%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio.jpg/1280px-Minh_T%C3%A2n%2C_V%E1%BB%8B_Xuy%C3%AAn%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio.jpg",
+      credit: "trungydang",
+      license: "CC BY 3.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Minh_T%C3%A2n%2C_V%E1%BB%8B_Xuy%C3%AAn%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio.jpg",
+      licenseVerified: true,
+      widthPx: 3264,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Minh_T%C3%A2n%2C_V%E1%BB%8B_Xuy%C3%AAn%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_%281%29.jpg/1280px-Minh_T%C3%A2n%2C_V%E1%BB%8B_Xuy%C3%AAn%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(1).jpg",
+      credit: "trungydang",
+      license: "CC BY 3.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Minh_T%C3%A2n%2C_V%E1%BB%8B_Xuy%C3%AAn%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(1).jpg",
+      licenseVerified: true,
+      widthPx: 4192,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Minh_T%C3%A2n%2C_V%E1%BB%8B_Xuy%C3%AAn%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_%283%29.jpg/1280px-Minh_T%C3%A2n%2C_V%E1%BB%8B_Xuy%C3%AAn%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(3).jpg",
+      credit: "trungydang",
+      license: "CC BY 3.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Minh_T%C3%A2n%2C_V%E1%BB%8B_Xuy%C3%AAn%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(3).jpg",
+      licenseVerified: true,
       widthPx: 3264,
     },
   ],
   "sung-la": [
     {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Nh%C3%A0_tr%C3%ACnh_t%C6%B0%E1%BB%9Dng_%E1%BB%9F_L%C5%A9ng_C%E1%BA%A9m_-_NKS.jpg/1280px-Nh%C3%A0_tr%C3%ACnh_t%C6%B0%E1%BB%9Dng_%E1%BB%9F_L%C5%A9ng_C%E1%BA%A9m_-_NKS.jpg",
+      credit: "NKSTTSSHNVN",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Nh%C3%A0_tr%C3%ACnh_t%C6%B0%E1%BB%9Dng_%E1%BB%9F_L%C5%A9ng_C%E1%BA%A9m_-_NKS.jpg",
+      licenseVerified: true,
+      widthPx: 5821,
+    },
+    {
       url: "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/S%E1%BB%A7ng_L%C3%A0%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio.jpg/1280px-S%E1%BB%A7ng_L%C3%A0%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio.jpg",
       credit: "trungydang",
       license: "CC BY 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:S%E1%BB%A7ng_L%C3%A0%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio.jpg",
+      licenseVerified: true,
       widthPx: 4192,
     },
     {
@@ -327,21 +535,8 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "trungydang",
       license: "CC BY 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:S%E1%BB%A7ng_L%C3%A0%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(2).jpg",
+      licenseVerified: true,
       widthPx: 4192,
-    },
-    {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/S%E1%BB%A7ng_L%C3%A0%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_%281%29.jpg/1280px-S%E1%BB%A7ng_L%C3%A0%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(1).jpg",
-      credit: "trungydang",
-      license: "CC BY 3.0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:S%E1%BB%A7ng_L%C3%A0%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(1).jpg",
-      widthPx: 3264,
-    },
-    {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/S%E1%BB%A7ng_L%C3%A0%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_%283%29.jpg/1280px-S%E1%BB%A7ng_L%C3%A0%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(3).jpg",
-      credit: "trungydang",
-      license: "CC BY 3.0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:S%E1%BB%A7ng_L%C3%A0%2C_%C4%90%E1%BB%93ng_V%C4%83n%2C_H%C3%A0_Giang%2C_Vietnam_-_panoramio_(3).jpg",
-      widthPx: 3264,
     },
   ],
   "lung-cu": [
@@ -350,6 +545,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Lung_Cu_flag_tower_of_Ha_Giang_in_2014_03.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
     {
@@ -357,6 +553,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Lung_Cu_flag_tower_of_Ha_Giang_in_2014_04.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
     {
@@ -364,6 +561,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Lung_Cu_flag_tower_of_Ha_Giang_in_2014_05.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
     {
@@ -371,6 +569,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Vuong Tri Binh",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Lung_Cu_flag_tower_of_Ha_Giang_in_2014_06.jpg",
+      licenseVerified: true,
       widthPx: 3552,
     },
   ],
@@ -380,6 +579,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "NKSTTSSHNVN",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Du_Gi%C3%A0.jpg",
+      licenseVerified: true,
       widthPx: 2048,
     },
     {
@@ -387,6 +587,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "The government of the French protectorate of Tonkin, French Indo-China.",
       license: "Public domain",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Porte_d'entr%C3%A9e_au_Yamen_du_Tu%E1%BA%A7n-Ph%E1%BB%A7_Blockhaus_crenel%C3%A9_%C3%A0_%C3%A9tage_et_logements_des_l%C3%ADnh-c%C6%A1_-_Trung_t%C3%A2m_L%C6%B0u_tr%E1%BB%AF_qu%E1%BB%91c_gia_I.jpg",
+      licenseVerified: true,
       widthPx: 833,
     },
   ],
@@ -396,6 +597,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Eternal Dragon",
       license: "CC BY 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Kh%E1%BA%A9u_Trang_v%E1%BA%A3i.JPG",
+      licenseVerified: true,
       widthPx: 4608,
     },
     {
@@ -403,6 +605,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Hoangvantoanajc",
       license: "CC BY-SA 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Ch%E1%BB%A3_t%C3%ACnh_Khau_Vai.jpg",
+      licenseVerified: true,
       widthPx: 2288,
     },
   ],
@@ -412,6 +615,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Quangpraha",
       license: "CC0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Ru%E1%BB%99ng_b%E1%BA%ADc_thang_%E1%BB%9F_Ho%C3%A0ng_Su_Ph%C3%AC.jpg",
+      licenseVerified: true,
       widthPx: 3800,
     },
     {
@@ -419,16 +623,8 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Manh2107",
       license: "CC0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Seal_of_Ho%C3%A0ng_Su_Ph%C3%AC_District.png",
+      licenseVerified: true,
       widthPx: 3471,
-    },
-  ],
-  "pho-bang": [
-    {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/L%C3%B4_c%E1%BB%91t_%E1%BB%9F_c%E1%BB%ADa_ng%C3%B5_th%C3%A0nh_ph%E1%BB%91%2C_ph%C3%ADa_H%C3%A0_Giang_-_Trung_t%C3%A2m_L%C6%B0u_tr%E1%BB%AF_qu%E1%BB%91c_gia_I.jpg/1280px-L%C3%B4_c%E1%BB%91t_%E1%BB%9F_c%E1%BB%ADa_ng%C3%B5_th%C3%A0nh_ph%E1%BB%91%2C_ph%C3%ADa_H%C3%A0_Giang_-_Trung_t%C3%A2m_L%C6%B0u_tr%E1%BB%AF_qu%E1%BB%91c_gia_I.jpg",
-      credit: "The government of the French protectorate of Tonkin, French Indo-China.",
-      license: "Public domain",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:L%C3%B4_c%E1%BB%91t_%E1%BB%9F_c%E1%BB%ADa_ng%C3%B5_th%C3%A0nh_ph%E1%BB%91%2C_ph%C3%ADa_H%C3%A0_Giang_-_Trung_t%C3%A2m_L%C6%B0u_tr%E1%BB%AF_qu%E1%BB%91c_gia_I.jpg",
-      widthPx: 834,
     },
   ],
   "cho-phien-dong-van": [
@@ -437,6 +633,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "trungydang",
       license: "CC BY 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Dong_Van_market%2Ctt_Dong_Van_%2C_Hagiang%2C_Vi%E1%BB%87t_Nam_-_panoramio.jpg",
+      licenseVerified: true,
       widthPx: 7602,
     },
     {
@@ -444,6 +641,7 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Zennysmile",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:A_corner_in_Dong_Van_Market.jpg",
+      licenseVerified: true,
       widthPx: 4320,
     },
     {
@@ -451,44 +649,36 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Nghia Bui- Zonitrip",
       license: "CC BY-SA 4.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Ha_Giang_market-_Dong_Van_market.jpg",
+      licenseVerified: true,
       widthPx: 4000,
     },
     {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Covered_market_of_Dong_Van_in_2014.jpg/1280px-Covered_market_of_Dong_Van_in_2014.jpg",
-      credit: "Vuong Tri Binh",
-      license: "CC BY-SA 4.0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Covered_market_of_Dong_Van_in_2014.jpg",
-      widthPx: 3552,
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Bureau_of_Labor_Statistics_-_Labor_Market_Informational_Seminar_Students_-_DPLA_-_32e2a863dfd1f8f0cfa22c3b6e5bc91c.jpg/1280px-Bureau_of_Labor_Statistics_-_Labor_Market_Informational_Seminar_Students_-_DPLA_-_32e2a863dfd1f8f0cfa22c3b6e5bc91c.jpg",
+      credit: "Department of Labor. Office of Public Affairs. Division of Audiovisual Communications. ca. 1992",
+      license: "Public domain",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Bureau_of_Labor_Statistics_-_Labor_Market_Informational_Seminar_Students_-_DPLA_-_32e2a863dfd1f8f0cfa22c3b6e5bc91c.jpg",
+      licenseVerified: true,
+      widthPx: 3637,
     },
   ],
   "ban-lo-lo-chai": [
     {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/HK_WC_Wan_Chai_Road_food_shop_%E7%B3%AF%E7%B1%B3%E9%9B%9E_Lo_mai_gai_November_2020_SS2_01.jpg/1280px-HK_WC_Wan_Chai_Road_food_shop_%E7%B3%AF%E7%B1%B3%E9%9B%9E_Lo_mai_gai_November_2020_SS2_01.jpg",
-      credit: "GKOACOIT menuso",
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/L%C3%B4_L%C3%B4_Ch%E1%BA%A3i_2022_-_NKS.jpg/1280px-L%C3%B4_L%C3%B4_Ch%E1%BA%A3i_2022_-_NKS.jpg",
+      credit: "NKSTTSSHNVN",
       license: "CC BY-SA 4.0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:HK_WC_Wan_Chai_Road_food_shop_%E7%B3%AF%E7%B1%B3%E9%9B%9E_Lo_mai_gai_November_2020_SS2_01.jpg",
-      widthPx: 3264,
+      sourcePage: "https://commons.wikimedia.org/wiki/File:L%C3%B4_L%C3%B4_Ch%E1%BA%A3i_2022_-_NKS.jpg",
+      licenseVerified: true,
+      widthPx: 3975,
     },
+  ],
+  "lang-det-lanh-lung-tam": [
     {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Chai_Wan_LO_Wing_Lok_Open_topless_yellow_automobile_Sept_2012_HK_03.JPG/1280px-Chai_Wan_LO_Wing_Lok_Open_topless_yellow_automobile_Sept_2012_HK_03.JPG",
-      credit: "Mattoerelnapys",
-      license: "CC BY-SA 3.0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Chai_Wan_LO_Wing_Lok_Open_topless_yellow_automobile_Sept_2012_HK_03.JPG",
-      widthPx: 2048,
-    },
-    {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bb/Chai_Wan_LO_Wing_Lok_Open_topless_yellow_automobile_Sept_2012_HK_01.JPG/1280px-Chai_Wan_LO_Wing_Lok_Open_topless_yellow_automobile_Sept_2012_HK_01.JPG",
-      credit: "Mattoerelnapys",
-      license: "CC BY-SA 3.0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Chai_Wan_LO_Wing_Lok_Open_topless_yellow_automobile_Sept_2012_HK_01.JPG",
-      widthPx: 2048,
-    },
-    {
-      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/Chai_Wan_LO_Wing_Lok_Open_topless_yellow_automobile_Sept_2012_HK_02.JPG/1280px-Chai_Wan_LO_Wing_Lok_Open_topless_yellow_automobile_Sept_2012_HK_02.JPG",
-      credit: "Mattoerelnapys",
-      license: "CC BY-SA 3.0",
-      sourcePage: "https://commons.wikimedia.org/wiki/File:Chai_Wan_LO_Wing_Lok_Open_topless_yellow_automobile_Sept_2012_HK_02.JPG",
-      widthPx: 2048,
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/Qu%E1%BA%A3n_B%E1%BA%A1%2C_Vietnam_-_Linen_making.jpg/1280px-Qu%E1%BA%A3n_B%E1%BA%A1%2C_Vietnam_-_Linen_making.jpg",
+      credit: "Benjamin Smith",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Qu%E1%BA%A3n_B%E1%BA%A1%2C_Vietnam_-_Linen_making.jpg",
+      licenseVerified: true,
+      widthPx: 5496,
     },
   ],
   "cho-tinh-khau-vai": [
@@ -497,7 +687,72 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
       credit: "Hoangvantoanajc",
       license: "CC BY-SA 3.0",
       sourcePage: "https://commons.wikimedia.org/wiki/File:Ch%E1%BB%A3_t%C3%ACnh_Khau_Vai.jpg",
+      licenseVerified: true,
       widthPx: 2288,
+    },
+  ],
+  "dong-lung-khuy": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/%C4%90%E1%BB%99ng_L%C3%B9ng_Kh%C3%BAy_%2847694355042%29.jpg/1280px-%C4%90%E1%BB%99ng_L%C3%B9ng_Kh%C3%BAy_(47694355042).jpg",
+      credit: "Sketyl none",
+      license: "CC BY 2.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:%C4%90%E1%BB%99ng_L%C3%B9ng_Kh%C3%BAy_(47694355042).jpg",
+      licenseVerified: true,
+      widthPx: 5968,
+    },
+  ],
+  "lang-van-hoa-pa-vi-ha": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Ancient_river_valley_in_PaVi_HaGiang_Vietnam.jpg/1280px-Ancient_river_valley_in_PaVi_HaGiang_Vietnam.jpg",
+      credit: "BacLuong",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Ancient_river_valley_in_PaVi_HaGiang_Vietnam.jpg",
+      licenseVerified: true,
+      widthPx: 2592,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Rd4C_%26_Valley_in_PaVi_HaGiang_Vietnam.jpg/1280px-Rd4C_%26_Valley_in_PaVi_HaGiang_Vietnam.jpg",
+      credit: "BacLuong",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Rd4C_%26_Valley_in_PaVi_HaGiang_Vietnam.jpg",
+      licenseVerified: true,
+      widthPx: 2592,
+    },
+  ],
+  "dinh-chieu-lau-thi": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/%C4%90%E1%BB%89nh_n%C3%BAi_chi%C3%AAu_l%E1%BA%A7u_thi.png/1280px-%C4%90%E1%BB%89nh_n%C3%BAi_chi%C3%AAu_l%E1%BA%A7u_thi.png",
+      credit: "Unknown authorUnknown author",
+      license: "CC0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:%C4%90%E1%BB%89nh_n%C3%BAi_chi%C3%AAu_l%E1%BA%A7u_thi.png",
+      licenseVerified: true,
+      widthPx: 960,
+    },
+  ],
+  "thao-nguyen-suoi-thau": [
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Th%E1%BA%A3o_nguy%C3%AAn_Su%C3%B4i_Th%E1%BA%A7u_-_NKS.jpg/1280px-Th%E1%BA%A3o_nguy%C3%AAn_Su%C3%B4i_Th%E1%BA%A7u_-_NKS.jpg",
+      credit: "NKSTTSSHNVN",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Th%E1%BA%A3o_nguy%C3%AAn_Su%C3%B4i_Th%E1%BA%A7u_-_NKS.jpg",
+      licenseVerified: true,
+      widthPx: 6000,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Su%C3%B4i_Th%E1%BA%A7u_-_NKS.jpg/1280px-Su%C3%B4i_Th%E1%BA%A7u_-_NKS.jpg",
+      credit: "NKSTTSSHNVN",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:Su%C3%B4i_Th%E1%BA%A7u_-_NKS.jpg",
+      licenseVerified: true,
+      widthPx: 6000,
+    },
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/NKS_v%C3%A0_th%E1%BA%A3o_nguy%C3%AAn_Su%C3%B4i_Th%E1%BA%A7u.jpg/1280px-NKS_v%C3%A0_th%E1%BA%A3o_nguy%C3%AAn_Su%C3%B4i_Th%E1%BA%A7u.jpg",
+      credit: "NKSTTSSHNVN",
+      license: "CC BY-SA 4.0",
+      sourcePage: "https://commons.wikimedia.org/wiki/File:NKS_v%C3%A0_th%E1%BA%A3o_nguy%C3%AAn_Su%C3%B4i_Th%E1%BA%A7u.jpg",
+      licenseVerified: true,
+      widthPx: 6000,
     },
   ],
 };
@@ -508,26 +763,22 @@ export const PLACE_IMAGES: Record<string, ImageRef[]> = {
  * trong @data/website/types trả ảnh dự phòng thay vì một chuỗi rỗng.
  */
 export const SLUGS_WITHOUT_IMAGE: string[] = [
-  // doc-tham-ma (tìm "Tham Ma slope Ha Giang")
   // cong-troi-quan-ba (tìm "Quan Ba heaven gate")
-  // nui-doi-co-tien (tìm "Quan Ba twin mountain")
-  // thac-du-gia (tìm "Du Gia waterfall")
-  // rung-thong-yen-minh (tìm "Yen Minh pine forest")
-  // dinh-thu-ho-vuong (tìm "Vuong mansion Sa Phin")
-  // ruong-bac-thang-hoang-su-phi (tìm "Hoang Su Phi terraced field")
-  // doc-chin-khoanh (tìm "Sung La valley Ha Giang")
+  // doc-chin-khoanh (tìm "Doc Chin Khoanh Pho Cao")
   // lung-tam (tìm "Lung Tam linen Ha Giang")
-  // lang-det-lanh-lung-tam (tìm "Hmong linen weaving Ha Giang")
-  // ban-nam-dam (tìm "Nam Dam Ha Giang")
-  "doc-tham-ma",
+  // pho-bang (tìm "Pho Bang Ha Giang")
+  // ban-nam-dam (tìm "Nam Dam Quan Ba Ha Giang")
+  // thon-tha (tìm "Tha village Ha Giang")
+  // ho-noong (tìm "Noong lake Vi Xuyen Ha Giang")
+  // thac-tien-deo-gio (tìm "Thac Tien Deo Gio Xin Man")
+  // bai-da-co-nam-dan (tìm "Nam Dan rock carving Xin Man")
   "cong-troi-quan-ba",
-  "nui-doi-co-tien",
-  "thac-du-gia",
-  "rung-thong-yen-minh",
-  "dinh-thu-ho-vuong",
-  "ruong-bac-thang-hoang-su-phi",
   "doc-chin-khoanh",
   "lung-tam",
-  "lang-det-lanh-lung-tam",
+  "pho-bang",
   "ban-nam-dam",
+  "thon-tha",
+  "ho-noong",
+  "thac-tien-deo-gio",
+  "bai-da-co-nam-dan",
 ];

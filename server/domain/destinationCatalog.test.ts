@@ -4,6 +4,8 @@ import { createElement } from 'react';
 import { WEBSITE_DESTINATIONS } from '@data/website/destinations';
 import { EXPANDED_DESTINATIONS } from '@data/website/expanded-destinations';
 import { findPlace } from '@data/places/index';
+import { PLACE_IMAGES as COMMONS_IMAGES } from '@data/website/images';
+import { MANUAL_PLACE_IMAGES } from '@data/website/images-manual';
 import { filterDestinations } from '@client/lib/destinationFilters';
 import { DestinationDetailModal } from '@client/components/DestinationDetailModal';
 import { toDestination } from './mappers';
@@ -19,7 +21,7 @@ const rows: DestinationRow[] = WEBSITE_DESTINATIONS.map(d => ({
   recommendedStayHours: d.recommendedStayHours, localFood: d.localFood, sortOrder: d.sortOrder,
 }));
 const destinations = rows.map(toDestination);
-const all = { query: '', category: 'all', region: 'all', expandedOnly: false };
+const all = { query: '', category: 'all', region: 'all' };
 
 describe('expanded discovery catalog', () => {
   it('contains 26 unique joined places, with all new parent references resolvable', () => {
@@ -110,12 +112,63 @@ describe('expanded discovery catalog', () => {
     expect(unknown.sourceLinks).toEqual([]);
   });
   it('labels regional photos using the actual image region, not the destination district', () => {
-    const d = WEBSITE_DESTINATIONS.find(d => d.slug === 'doc-tham-ma')!;
+    // Commons chưa có ảnh nào chụp đúng con dốc, nên Chín Khoanh mượn ảnh đường núi trên quốc lộ
+    // 4C — cùng tuyến, cùng huyện, và quan trọng là chủ thể trong ảnh cũng là một con đường đèo.
+    const d = WEBSITE_DESTINATIONS.find(d => d.slug === 'doc-chin-khoanh')!;
+    expect(d.imageSlug).toBe('duong-hanh-phuc');
     const photos = destinationPhotos(d.slug, [destinationRowData(d).imageUrl]);
     expect(photos[0].kind).toBe('area');
-    expect(photos[0].regionLabel).toBe('Sủng Là');
+    expect(photos[0].regionLabel).toBe('Con đường Hạnh Phúc (quốc lộ 4C)');
     expect(photos[0].sourcePage).toMatch(/^https:\/\//);
     expect(photos[0].credit).toBeTruthy();
+  });
+  it('marks a photo taken at the place itself as its own, not as a regional stand-in', () => {
+    // Sáu điểm từng mượn ảnh của cả vùng nay đã có ảnh chụp đúng nơi trên Commons.
+    for (const slug of ['nui-doi-co-tien', 'rung-thong-yen-minh', 'thac-du-gia', 'doc-tham-ma',
+      'dinh-thu-ho-vuong', 'ruong-bac-thang-hoang-su-phi']) {
+      const d = WEBSITE_DESTINATIONS.find(x => x.slug === slug)!;
+      expect(d.imageSlug).toBe(slug);
+      const photos = destinationPhotos(d.slug, [destinationRowData(d).imageUrl]);
+      expect(photos[0].kind).toBe('place');
+      expect(photos[0].credit).toBeTruthy();
+      expect(photos[0].license).toBeTruthy();
+    }
+  });
+  it('never lets an unlicensed photo claim a Creative Commons licence', () => {
+    for (const [slug, images] of Object.entries(MANUAL_PLACE_IMAGES)) {
+      // Commons is the only source whose licence field is verifiable, so it always wins; a slug
+      // sitting in both files means the manual entry should have been deleted.
+      expect(COMMONS_IMAGES[slug]).toBeUndefined();
+      for (const image of images) {
+        expect(image.license).not.toMatch(/^(cc|public domain|pd)\b/i);
+        expect(image.credit).toBeTruthy();
+        expect(image.sourcePage).toMatch(/^https:\/\//);
+        // Only the generator may attest a licence, and only from Commons metadata.
+        expect(image.licenseVerified).not.toBe(true);
+      }
+    }
+    for (const images of Object.values(COMMONS_IMAGES)) {
+      for (const image of images) expect(image.licenseVerified).toBe(true);
+    }
+  });
+  it('links through to the source only for a photo whose licence was verified', () => {
+    const verified = destinationPhotos('deo-ma-pi-leng',
+      [destinationRowData(WEBSITE_DESTINATIONS.find(d => d.slug === 'deo-ma-pi-leng')!).imageUrl]);
+    expect(verified[0].licenseVerified).toBe(true);
+    const unverified = destinationPhotos('bai-da-co-nam-dan',
+      [destinationRowData(WEBSITE_DESTINATIONS.find(d => d.slug === 'bai-da-co-nam-dan')!).imageUrl]);
+    expect(unverified[0].licenseVerified).toBe(false);
+    // Attribution itself is never conditional — only the hyperlink is.
+    expect(unverified[0].credit).toBeTruthy();
+    expect(unverified[0].license).toBeTruthy();
+  });
+  it('shows the state-portal photos for the two places Commons has none of', () => {
+    for (const slug of ['thac-tien-deo-gio', 'bai-da-co-nam-dan']) {
+      const d = WEBSITE_DESTINATIONS.find(x => x.slug === slug)!;
+      const photos = destinationPhotos(d.slug, [destinationRowData(d).imageUrl]);
+      expect(photos[0].kind).toBe('place');
+      expect(photos[0].license).toMatch(/Chưa xác định giấy phép/);
+    }
   });
   it('searches accents, case, repeated spaces and aliases', () => {
     for (const query of ['lo lo chai', 'LÔ LÔ CHẢI', '  lo  lo chai  ']) {
@@ -124,8 +177,8 @@ describe('expanded discovery catalog', () => {
     expect(filterDestinations(destinations, { ...all, query: 'hang lung khuy' }).map(d => d.id)).toEqual(['dong-lung-khuy']);
   });
   it('combines filters, preserves category counts and resets without losing original places', () => {
-    expect(filterDestinations(destinations, { ...all, expandedOnly: true })).toHaveLength(13);
-    expect(filterDestinations(destinations, { ...all, expandedOnly: true, region: 'Quản Bạ', category: 'culture' })).toHaveLength(2);
+    expect(filterDestinations(destinations, { ...all, region: 'Quản Bạ' })).toHaveLength(6);
+    expect(filterDestinations(destinations, { ...all, region: 'Quản Bạ', category: 'culture' })).toHaveLength(2);
     for (const [category, count] of Object.entries({ pass: 2, nature: 8, culture: 11, viewpoint: 3, waterfall: 2 })) {
       expect(filterDestinations(destinations, { ...all, category })).toHaveLength(count);
     }

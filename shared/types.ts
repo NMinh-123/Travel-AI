@@ -5,6 +5,8 @@ export interface DestinationImageMeta {
   credit?: string;
   license?: string;
   sourcePage?: string;
+  /** Giấy phép lấy từ metadata của Wikimedia Commons; chỉ khi đó giao diện mới dẫn về trang gốc. */
+  licenseVerified?: boolean;
 }
 export interface DestinationPhoto extends DestinationImageMeta { url: string }
 
