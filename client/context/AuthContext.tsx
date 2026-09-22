@@ -56,7 +56,7 @@ interface AuthContextType {
   isFavorite: (destinationId: string) => boolean;
   savedItineraries: SavedItinerary[];
   saveItinerary: (input: SaveItineraryInput) => Promise<MutationResult>;
-  deleteSavedItinerary: (id: string) => Promise<void>;
+  deleteSavedItinerary: (id: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 /** Đúng ba trường server cho phép sửa, nên không nhận Partial<UserProfile>. */
@@ -286,8 +286,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           : current
       );
+      return { success: true };
     } catch (error) {
-      console.error('Không xoá được lịch trình:', error);
+      // Nuốt lỗi ở đây nghĩa là lịch trình vẫn nằm nguyên trên màn hình sau khi bấm xoá, và
+      // khách không có cách nào phân biệt "xoá hỏng" với "bấm chưa ăn".
+      return { success: false, error: errorMessage(error, 'Không xoá được lịch trình') };
     }
   }, []);
 

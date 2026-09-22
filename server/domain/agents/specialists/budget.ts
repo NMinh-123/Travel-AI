@@ -1,9 +1,9 @@
 import { CHAT_RESPONSE_SCHEMA } from "@server/domain/prompts";
-import { cleanStringList, generateStructured } from "@server/infra/gemini";
+import { cleanStringList } from "@server/infra/gemini";
 import { estimateBudget } from "@server/domain/agents/tools";
 import type { AgentContext, AgentResult } from "@server/domain/agents/types";
 import { checkNumericFacts, type EvidenceBlock } from "@server/domain/agents/grounding";
-import { formatHistory, formatVnd, personaFor } from "./shared";
+import { formatHistory, formatVnd, generateReply, personaFor } from "./shared";
 
 /**
  * Tác tử lập kế hoạch kinh phí — FR-BOT-04.
@@ -38,7 +38,7 @@ export async function runBudget(context: AgentContext): Promise<AgentResult> {
     .map((row) => `- ${row.name} (${row.location}): ${formatVnd(row.pricePerNight)}/đêm`)
     .join("\n");
 
-  const { data, metrics } = await generateStructured<{ reply: string; suggestions: string[] }>({
+  const { data, metrics } = await generateReply<{ reply: string; suggestions: string[] }>(context, {
     tier: "strong",
     systemInstruction: personaFor(
       "trình bày bảng dự trù chi phí đã được hệ thống tính sẵn, kèm vài mẹo tối ưu chi phí. " +

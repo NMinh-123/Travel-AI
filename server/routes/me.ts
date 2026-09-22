@@ -227,6 +227,14 @@ meRouter.post(
     if (!Array.isArray(days) || days.length === 0) {
       return res.status(400).json({ error: "Lịch trình không có ngày nào để lưu" });
     }
+    /**
+     * Mỗi phần tử phải là một object. `days` đi thẳng vào cột Json nên một `null` lọt qua đây
+     * không hỏng ở đây mà nằm im trong database, rồi nổ ở chỗ đọc nó ra — nơi không còn đủ ngữ
+     * cảnh để nói cho khách biết cái gì sai.
+     */
+    if (days.some((day: unknown) => !day || typeof day !== "object" || Array.isArray(day))) {
+      return res.status(400).json({ error: "Lịch trình có ngày không hợp lệ" });
+    }
 
     const saved = await prisma.savedItinerary.count({ where: { userId } });
     if (saved >= MAX_SAVED_ITINERARIES) {
@@ -242,7 +250,8 @@ meRouter.post(
         userId,
         title,
         overview,
-        totalKm: Number.isFinite(totalKm) ? Math.round(totalKm) : 0,
+        // Quãng đường âm là vô nghĩa; kẹp về 0 thay vì lưu lại rồi hiển thị "-100 km".
+        totalKm: Number.isFinite(totalKm) ? Math.max(0, Math.round(totalKm)) : 0,
         travelMode: typeof body.travelMode === "string" ? body.travelMode : null,
         vibe: typeof body.vibe === "string" ? body.vibe : null,
         budgetLevel: typeof body.budgetLevel === "string" ? body.budgetLevel : null,

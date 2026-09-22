@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Sparkles, X, Send, User, RefreshCw, LifeBuoy } from 'lucide-react';
 import { ChatMessage } from '@shared/types';
-import { MarkdownMessage } from './MarkdownMessage';
+import { MarkdownMessage, StreamingCursor } from './MarkdownMessage';
 import { useChatSession } from '@client/hooks/useChatSession';
 
 /** Hằng số ngoài component để tham chiếu không đổi giữa các lần render. */
@@ -32,8 +32,10 @@ export const AIConciergeModal: React.FC<AIConciergeModalProps> = ({
   // đọc CÙNG một state: khách hỏi ở đâu thì mở phía kia vẫn thấy nguyên hội thoại (FR-BOT-07).
   // Hook vẫn phải gọi trước `return null` bên dưới theo quy tắc hook, và giờ điều đó vô hại vì
   // nó chỉ đọc context chứ không tự mở phiên như bản trước.
-  const { messages, isLoading, isRestoring, sessionError, escalated, send } = useChatSession(MODAL_GREETING);
+  const { messages, isLoading, stageLabel, isRestoring, sessionError, escalated, send } = useChatSession(MODAL_GREETING);
   const chatBusy = isLoading || isRestoring || !!sessionError;
+  // Xem ghi chú cùng tên ở AIConciergeTab.
+  const streamingNow = messages.some((m) => m.streaming);
   const [input, setInput] = useState('');
 
   if (!isOpen) return null;
@@ -91,7 +93,10 @@ export const AIConciergeModal: React.FC<AIConciergeModalProps> = ({
                   : 'bg-[#f1f4f3] text-[#181c1c] rounded-tl-none border border-[#e0e3e1]'
               }`}>
                 {m.role === 'assistant' ? (
-                  <MarkdownMessage content={m.content} />
+                  <>
+                    <MarkdownMessage content={m.content} />
+                    {m.streaming && <StreamingCursor />}
+                  </>
                 ) : (
                   <div className="whitespace-pre-line">{m.content}</div>
                 )}
@@ -113,10 +118,12 @@ export const AIConciergeModal: React.FC<AIConciergeModalProps> = ({
             </div>
           ))}
 
-          {isLoading && (
+          {isLoading && !streamingNow && (
             <div className="flex items-center gap-2 text-xs text-[#6e7977] p-2">
               <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#0051d5]" />
-              <span>AI đang tra cứu dữ liệu thực địa...</span>
+              <span role="status" aria-live="polite">
+                {stageLabel ?? 'AI đang xử lý câu hỏi của bạn...'}
+              </span>
             </div>
           )}
         </div>

@@ -102,19 +102,51 @@ export function startMockGemini(port: number): ReturnType<typeof createServer> {
       const raw = Buffer.concat(chunks).toString("utf8");
       const body = raw ? (JSON.parse(raw) as unknown) : {};
       const url = req.url ?? "";
-      res.setHeader("Content-Type", "application/json");
 
       if (url.includes(":embedContent") || url.includes(":batchEmbedContents")) {
+        res.setHeader("Content-Type", "application/json");
         const contents = (body as { contents?: unknown }).contents;
         const texts = Array.isArray(contents) ? contents : [contents ?? ""];
         res.end(JSON.stringify({ embeddings: texts.map(() => ({ values: fakeVector() })) }));
         return;
       }
 
+      const payload = JSON.stringify(replyFor(body));
+      const usageMetadata = { promptTokenCount: 100, candidatesTokenCount: 200 };
+
+      /**
+       * Đường STREAMING, dùng bởi `POST /api/chat/stream`.
+       *
+       * Máy chủ giả này từng chỉ biết trả một khối JSON, nên khi giao diện chuyển sang streaming
+       * thì CẢ BỐN bài e2e về chat cùng đỏ một lúc — kể cả bài không liên quan gì tới tính năng
+       * mới. SDK gọi `:streamGenerateContent?alt=sse` và chờ một luồng SSE; nhận về một object
+       * JSON thì nó không đọc ra được chunk nào, và biểu hiện ở phía khách là khung chat trống.
+       *
+       * Cắt payload thành nhiều mẩu nhỏ chứ không đẩy một lần: chính việc cắt mới kiểm được
+       * `partialReplyText` — bộ rút `reply` từ JSON gõ dần — trên đường đi thật. Đẩy nguyên khối
+       * thì bài e2e vẫn xanh kể cả khi bộ đó hỏng hoàn toàn.
+       */
+      if (url.includes(":streamGenerateContent")) {
+        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache");
+
+        const frame = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+        for (const piece of payload.match(/[\s\S]{1,24}/g) ?? []) {
+          frame({ candidates: [{ content: { role: "model", parts: [{ text: piece }] } }] });
+        }
+        frame({
+          candidates: [{ content: { role: "model", parts: [{ text: "" }] }, finishReason: "STOP" }],
+          usageMetadata,
+        });
+        res.end();
+        return;
+      }
+
+      res.setHeader("Content-Type", "application/json");
       res.end(
         JSON.stringify({
-          candidates: [{ content: { role: "model", parts: [{ text: JSON.stringify(replyFor(body)) }] }, finishReason: "STOP" }],
-          usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 200 },
+          candidates: [{ content: { role: "model", parts: [{ text: payload }] }, finishReason: "STOP" }],
+          usageMetadata,
         }),
       );
     });

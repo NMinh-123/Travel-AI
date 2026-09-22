@@ -68,6 +68,15 @@ const ItineraryPlannerView: React.FC<ItineraryPlannerProps & { preset: PresetIti
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const [generateError, setGenerateError] = useState<string | null>(null);
+  /**
+   * Điểm chưa khớp giữa yêu cầu và lịch trình model vừa sinh.
+   *
+   * KHÔNG phải lỗi: `/api/plan-itinerary` cố tình trả 200 kèm `validation` ngay cả khi lịch
+   * trình còn sai (xem ghi chú ở server/routes/itinerary.ts), vì một lịch trình lệch một ngày
+   * vẫn dùng được. Nhưng im lặng thì khách nhận một thứ hệ thống đã biết là sai mà không có
+   * đường nào biết điều đó.
+   */
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   // Lịch trình đang xem: khởi tạo từ bản mẫu, thay bằng bản do AI sinh sau khi tạo xong.
   const [itineraryDays, setItineraryDays] = useState<DayItinerary[]>(preset.days);
@@ -88,6 +97,7 @@ const ItineraryPlannerView: React.FC<ItineraryPlannerProps & { preset: PresetIti
   const handleGenerateAIItinerary = async () => {
     setIsGenerating(true);
     setGenerateError(null);
+    setWarnings([]);
     try {
       const res = await fetch('/api/plan-itinerary', {
         method: 'POST',
@@ -126,6 +136,12 @@ const ItineraryPlannerView: React.FC<ItineraryPlannerProps & { preset: PresetIti
               .filter((tip: unknown): tip is string => typeof tip === 'string' && tip.trim().length > 0)
               .map((tip: string) => tip.trim())
           : []
+      );
+      const issues: unknown[] = Array.isArray(data?.validation?.issues) ? data.validation.issues : [];
+      setWarnings(
+        issues
+          .map((issue) => (issue as { message?: unknown })?.message)
+          .filter((message): message is string => typeof message === 'string' && message.trim().length > 0)
       );
       setActiveDay(1);
     } catch (err) {
@@ -305,6 +321,23 @@ const ItineraryPlannerView: React.FC<ItineraryPlannerProps & { preset: PresetIti
             <div>
               <span className="font-bold block">Không tạo được lịch trình AI</span>
               <span className="text-red-800">{generateError}</span>
+            </div>
+          </div>
+        )}
+
+        {warnings.length > 0 && (
+          <div
+            role="status"
+            className="mt-4 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5"
+          >
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block">Lịch trình còn điểm chưa khớp yêu cầu</span>
+              <ul className="mt-1 space-y-1 list-disc list-inside text-amber-800">
+                {warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
             </div>
           </div>
         )}

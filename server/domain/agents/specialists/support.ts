@@ -1,10 +1,9 @@
 import { Type } from "@google/genai";
 import type { Schema } from "@google/genai";
 import type { EscalationReason } from "@prisma/client";
-import { generateStructured } from "@server/infra/gemini";
 import { describeSlots } from "@server/domain/agents/dialog";
 import type { AgentContext, AgentResult } from "@server/domain/agents/types";
-import { formatHistory, personaFor } from "./shared";
+import { formatHistory, generateReply, personaFor } from "./shared";
 
 /**
  * Tác tử hỗ trợ & chuyển tiếp nhân viên — FR-BOT-08, theo luồng SRS Hình 10.6.
@@ -57,11 +56,11 @@ export async function runSupport(
   context: AgentContext,
   reason: EscalationReason,
 ): Promise<AgentResult> {
-  const { data, metrics } = await generateStructured<{
+  const { data, metrics } = await generateReply<{
     reply: string;
     summary: string;
     suggestions: string[];
-  }>({
+  }>(context, {
     tier: "light",
     systemInstruction: personaFor(
       "tiếp nhận tình huống vượt khả năng xử lý tự động và chuyển tiếp cho nhân viên. " +

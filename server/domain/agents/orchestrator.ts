@@ -13,7 +13,7 @@ import { runDiscovery } from "./specialists/discovery";
 import { runItinerary } from "./specialists/itinerary";
 import { runKnowledge } from "./specialists/knowledge";
 import { runSupport } from "./specialists/support";
-import { MIN_INTENT_CONFIDENCE, type AgentContext, type AgentResult, type Intent, type NluResult, type Slots, type TurnTrace } from "./types";
+import { MIN_INTENT_CONFIDENCE, type AgentContext, type AgentResult, type AgentStream, type Intent, type NluResult, type Slots, type TurnEvent, type TurnTrace } from "./types";
 import { findOutOfAreaPlaces, findPlacesInText, resolvePlaceNames } from "@server/domain/rag/places";
 import { rewriteQuery } from "@server/domain/rag/rewrite";
 
@@ -33,6 +33,14 @@ export interface TurnInput {
   message: string;
   slots: Slots;
   history: { role: "user" | "assistant"; content: string }[];
+  /**
+   * Kênh đẩy tiến trình và chữ ra ngay trong lúc lượt đang chạy. Chỉ endpoint streaming truyền
+   * vào; thiếu nó thì `handleTurn` chạy y hệt bản cũ và trả về đúng một lần ở cuối.
+   *
+   * Hợp đồng giữ nguyên bất kể có hay không: `TurnOutput` vẫn là kết quả thật và đầy đủ, đã qua
+   * guardrail. Mọi thứ đi qua đây chỉ là bản xem trước chưa được kiểm.
+   */
+  onEvent?: (event: TurnEvent) => void;
 }
 
 export interface TurnOutput {
@@ -76,6 +84,32 @@ function askForSlot(intent: Intent, slot: keyof Slots): AgentResult {
   };
 }
 
+/**
+ * Ngắt kênh streaming cho một lượt gọi tác tử, sau khi đã xoá chữ đã đẩy ra.
+ *
+ * ĐÂY LÀ CHỖ HỢP ĐỒNG STREAMING GẶP GUARDRAIL, và nó phải nằm ở một hàm có tên chứ không phải một
+ * phép sao chép đối tượng viết vội. Câu trả lời mà tác tử vừa stream đã bị guardrail vứt — vì nêu
+ * con số không có trong chứng cứ, hoặc lộ ký hiệu che dữ liệu — nên nó KHÔNG được đứng lại trên
+ * màn hình. `reset` xoá nó đi, và câu chuyển tiếp thay thế cố tình không stream: nó về nguyên khối
+ * trong sự kiện `final`, nơi nó đã là kết quả đã kiểm.
+ *
+ * Nối thêm câu chuyển tiếp vào sau đoạn vừa bị chặn là hỏng nặng hơn không stream: khách đọc được
+ * một con số bịa, rồi ngay dưới là lời xin lỗi vì không có số liệu.
+ */
+function quiet(context: AgentContext): AgentContext {
+  context.stream?.reset();
+  return { ...context, stream: undefined };
+}
+
+/** Bắc `AgentStream` lên kênh sự kiện của lượt. Một phép đổi hình dạng, không thêm logic nào. */
+function makeStream(onEvent: (event: TurnEvent) => void): AgentStream {
+  return {
+    delta: (text) => onEvent({ type: "delta", text }),
+    reset: () => onEvent({ type: "reset" }),
+    stage: (stage, detail) => onEvent({ type: "stage", stage, ...(detail ? { detail } : {}) }),
+  };
+}
+
 export interface TurnDeps {
   classify: typeof classify;
   resolvePlaceNames: typeof resolvePlaceNames;
@@ -101,6 +135,7 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
   const { result: nlu, metrics: nluMetrics } = await deps.classify(input.message, input.history);
   const nluMs = Date.now() - startedAt;
   path.push({ node: "nlu", outcome: "ok", detail: `${nlu.intent} conf=${nlu.confidence}`, ms: nluMs });
+  input.onEvent?.({ type: "stage", stage: "nlu", detail: nlu.intent });
 
   // Dialog Manager: gộp thực thể vừa trích xuất vào trạng thái phiên TRƯỚC khi định tuyến.
   // Đây là cơ chế cho phép khách bổ sung thông tin dần qua nhiều lượt (SRS Mục 11.1) — thiếu bước
@@ -190,6 +225,7 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
     nlu,
     history: input.history,
     placeSlugs,
+    ...(input.onEvent ? { stream: makeStream(input.onEvent) } : {}),
   };
 
   const agentStartedAt = Date.now();
@@ -246,16 +282,19 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
   if (forcedReason) {
     path.push({ node: "route", outcome: "forced_escalation", detail: "support", reason: forcedReason });
     agent = "support";
+    input.onEvent?.({ type: "stage", stage: "agent", detail: "support" });
     result = await deps.runSupport(context, forcedReason);
     recordAgent(agent, result);
   } else {
     path.push({ node: "route", outcome: "agent", detail: agent });
+    input.onEvent?.({ type: "stage", stage: "route", detail: agent });
     const missing = missingSlots(agent, slots);
     if (missing.length > 0) {
       path.push({ node: "slot_gate", outcome: "ask", detail: missing[0] });
       result = askForSlot(agent, missing[0]);
     } else {
       path.push({ node: "slot_gate", outcome: "complete" });
+      input.onEvent?.({ type: "stage", stage: "agent", detail: agent });
       try {
         result = await deps.runAgent(agent, context);
         recordAgent(agent, result);
@@ -284,7 +323,7 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
         path.push({ node: "agent", outcome: "threw", detail: agent, reason: `AGENT_ERROR:${failure}` });
         console.error(`Tác tử ${agent} lỗi (${failure}):`, error);
         agent = "support";
-        result = await deps.runSupport(context, "OUT_OF_SCOPE");
+        result = await deps.runSupport(quiet(context), "OUT_OF_SCOPE");
         recordAgent(agent, result);
       }
 
@@ -302,7 +341,7 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
          */
         const reason: EscalationReason =
           blocked === "insufficient" || blocked === "unsupported" ? "OUT_OF_SCOPE" : "COMPLAINT";
-        const fallback = await deps.runSupport(context, reason);
+        const fallback = await deps.runSupport(quiet(context), reason);
         recordAgent("support", fallback);
         agent = "support";
         result = { ...fallback, calls: [...result.calls, ...fallback.calls], retrieval: result.retrieval };

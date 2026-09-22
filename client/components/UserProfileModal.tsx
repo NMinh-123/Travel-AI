@@ -565,6 +565,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               chỉ có trong type mà không đường nào ghi vào và không chỗ nào hiển thị. */}
           {activeTab === 'itineraries' && (
             <div className="space-y-3">
+              {saveError && (
+                <div role="alert" className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800">
+                  {saveError}
+                </div>
+              )}
               {savedItineraries.length === 0 ? (
                 <div className="text-center py-10">
                   <Route className="w-10 h-10 text-[#bdc9c6] mx-auto mb-3" />
@@ -599,7 +604,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       </div>
 
                       <button
-                        onClick={() => deleteSavedItinerary(itinerary.id)}
+                        onClick={async () => {
+                          setSaveError(null);
+                          const result = await deleteSavedItinerary(itinerary.id);
+                          if (!result.success) {
+                            setSaveError(result.error ?? 'Không xoá được lịch trình');
+                          }
+                        }}
                         aria-label={`Xoá lịch trình ${itinerary.title}`}
                         className="p-2 rounded-lg text-[#6e7977] hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
                       >

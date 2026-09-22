@@ -4,7 +4,7 @@ import {
   Sparkles, Send, User, RefreshCw, Copy, Check, LifeBuoy, ThumbsUp, ThumbsDown,
   ShieldAlert, CloudSun, Route, Bed, MessageSquarePlus
 } from 'lucide-react';
-import { MarkdownMessage } from './MarkdownMessage';
+import { MarkdownMessage, StreamingCursor } from './MarkdownMessage';
 import { useChatSession } from '@client/hooks/useChatSession';
 import { useAuth } from '@client/context/AuthContext';
 
@@ -63,12 +63,15 @@ interface AIConciergeTabProps {
 }
 
 export const AIConciergeTab: React.FC<AIConciergeTabProps> = ({ initialPrompt = '' }) => {
-  const { messages, isLoading, isRestoring, escalated, satisfaction, send, rate, reset,
+  const { messages, isLoading, stageLabel, isRestoring, escalated, satisfaction, send, rate, reset,
     sessions, activeSessionId, historyLoading, historyError, sessionError, hasMoreHistory,
     loadHistory, openSession } =
     useChatSession(GREETING);
   const { isAuthenticated, openAuthModal } = useAuth();
   const chatBusy = isLoading || isRestoring || !!sessionError;
+  // Model đã bắt đầu viết: bong bóng tin nhắn tự nó là chỉ báo, nên khung chờ riêng phải
+  // nhường chỗ thay vì đứng song song với chữ đang chạy.
+  const streamingNow = messages.some((msg) => msg.streaming);
 
   const [inputPrompt, setInputPrompt] = useState<string>(initialPrompt);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -246,13 +249,17 @@ export const AIConciergeTab: React.FC<AIConciergeTabProps> = ({ initialPrompt = 
 
                 {/* Trợ lý trả lời bằng markdown; tin nhắn của người dùng giữ nguyên văn */}
                 {msg.role === 'assistant' ? (
-                  <MarkdownMessage content={msg.content} />
+                  <>
+                    <MarkdownMessage content={msg.content} />
+                    {msg.streaming && <StreamingCursor />}
+                  </>
                 ) : (
                   <div className="leading-relaxed whitespace-pre-line">{msg.content}</div>
                 )}
 
-                {/* Copy button for Assistant */}
-                {msg.role === 'assistant' && (
+                {/* Nút sao chép chỉ hiện khi câu trả lời đã xong: sao chép một câu đang viết dở
+                    thì thứ vào clipboard là một bản không bao giờ tồn tại ở đâu cả. */}
+                {msg.role === 'assistant' && !msg.streaming && (
                   <div className="mt-3 pt-2 border-t border-[#e0e3e1] flex items-center justify-end">
                     <button
                       onClick={() => handleCopy(msg.content, msg.id)}
@@ -304,15 +311,17 @@ export const AIConciergeTab: React.FC<AIConciergeTabProps> = ({ initialPrompt = 
             </div>
           )}
 
-          {/* Loading Indicator */}
-          {isLoading && (
+          {/* Khung chờ, chỉ dựng tới khi chữ đầu tiên về */}
+          {isLoading && !streamingNow && (
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#0051d5] to-[#316bf3] text-white flex items-center justify-center shrink-0 animate-pulse">
                 <Sparkles className="w-5 h-5" />
               </div>
               <div className="glass-card border border-[#bdc9c6] rounded-2xl rounded-tl-none p-4 text-xs text-[#3e4947] flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-[#0051d5]" />
-                <span>Trợ lý AI đang tra cứu dữ liệu địa hình và tổng hợp câu trả lời...</span>
+                <span role="status" aria-live="polite">
+                  {stageLabel ?? 'Trợ lý AI đang xử lý câu hỏi của bạn...'}
+                </span>
               </div>
             </div>
           )}

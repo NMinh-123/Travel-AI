@@ -1,10 +1,10 @@
 import { CHAT_RESPONSE_SCHEMA } from "@server/domain/prompts";
-import { cleanStringList, generateStructured } from "@server/infra/gemini";
+import { cleanStringList } from "@server/infra/gemini";
 import { describeSlots } from "@server/domain/agents/dialog";
 import { findDestinations, findDestinationsByName } from "@server/domain/agents/tools";
 import type { AgentContext, AgentResult } from "@server/domain/agents/types";
 import type { EvidenceBlock } from "@server/domain/agents/grounding";
-import { formatHistory, personaFor } from "./shared";
+import { formatHistory, generateReply, personaFor } from "./shared";
 
 /**
  * Tác tử tư vấn tìm điểm đến — FR-BOT-02 trong bối cảnh Hà Giang.
@@ -57,7 +57,7 @@ export async function runDiscovery(context: AgentContext): Promise<AgentResult> 
 
   const catalogue = entries.map((entry) => entry.text).join("\n\n");
 
-  const { data, metrics } = await generateStructured<{ reply: string; suggestions: string[] }>({
+  const { data, metrics } = await generateReply<{ reply: string; suggestions: string[] }>(context, {
     tier: "light",
     systemInstruction: personaFor(
       "gợi ý điểm đến phù hợp, giải thích ngắn gọn VÌ SAO mỗi điểm hợp với nhu cầu khách",

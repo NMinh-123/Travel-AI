@@ -1,4 +1,11 @@
 import { CONCIERGE_SYSTEM_PROMPT } from "@server/domain/prompts";
+import {
+  generateStructured,
+  generateStructuredStream,
+  type StructuredCall,
+  type StructuredResult,
+} from "@server/infra/gemini";
+import type { AgentContext } from "@server/domain/agents/types";
 
 /**
  * Giọng điệu dùng chung cho mọi tác tử. Sau Vòng 5, CONCIERGE_SYSTEM_PROMPT chỉ còn vai và văn
@@ -27,4 +34,26 @@ export function formatHistory(history: { role: "user" | "assistant"; content: st
 
 export function formatVnd(amount: number): string {
   return `${amount.toLocaleString("vi-VN")}đ`;
+}
+
+/**
+ * Một lượt gọi sinh câu trả lời, tự chọn đường streaming hay không theo ngữ cảnh.
+ *
+ * Bốn tác tử sinh văn xuôi đều gọi qua đây thay vì tự rẽ nhánh, vì chỗ rẽ nhánh này rất dễ bị bỏ
+ * sót khi thêm tác tử mới: quên đi thì tác tử đó im lặng suốt lượt rồi mới hiện nguyên câu, mà
+ * mọi kiểm thử vẫn xanh — streaming không đổi kết quả trả về, chỉ đổi lúc khách nhìn thấy nó.
+ *
+ * Tác tử lịch trình KHÔNG dùng hàm này và cũng không nên: câu trả lời ở đó do code dựng từ chính
+ * lịch trình vừa sinh, không có token nào chảy ra từ model để mà đẩy sớm.
+ */
+export function generateReply<T>(
+  context: AgentContext,
+  call: StructuredCall,
+): Promise<StructuredResult<T>> {
+  if (!context.stream) return generateStructured<T>(call);
+  return generateStructuredStream<T>({
+    ...call,
+    onDelta: context.stream.delta,
+    onReset: context.stream.reset,
+  });
 }

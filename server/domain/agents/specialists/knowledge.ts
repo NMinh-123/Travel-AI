@@ -1,7 +1,7 @@
 import { GROUNDED_CHAT_RESPONSE_SCHEMA } from "@server/domain/prompts";
 import { describeTemporal } from "@server/domain/temporal/router";
 import type { TemporalContext } from "@server/domain/temporal/types";
-import { cleanStringList, generateStructured } from "@server/infra/gemini";
+import { cleanStringList } from "@server/infra/gemini";
 import { retrieve } from "@server/domain/rag/retrieval";
 import { expandPlaceTree, placeKinds } from "@server/domain/rag/places";
 import { domainSignals, entityTypeSignals, seasonSignals } from "@server/domain/rag/signals";
@@ -17,7 +17,7 @@ import {
   verifyCitations, type Citation, type EvidenceBlock,
 } from "@server/domain/agents/grounding";
 import type { ToolErrorCode } from "@data/realtime/types";
-import { formatHistory, personaFor } from "./shared";
+import { formatHistory, generateReply, personaFor } from "./shared";
 
 /**
  * Tác tử giới thiệu địa danh & FAQ — FR-BOT-01 và FR-BOT-05. Đây là tác tử duy nhất dùng RAG.
@@ -410,6 +410,7 @@ export async function runKnowledge(context: AgentContext): Promise<AgentResult> 
 
   // Truy xuất dùng câu ĐÃ CHUẨN HOÁ; lời nhắc bên dưới vẫn dùng `context.message` để model đọc
   // đúng chữ khách gõ. Xem chú thích ở `AgentContext.retrievalQuery`.
+  context.stream?.stage("retrieval");
   const { chunks, metrics: retrieval } = await retrieve(context.retrievalQuery ?? context.message, {
     finalLimit: 5,
     placeSlugs,
@@ -498,11 +499,11 @@ export async function runKnowledge(context: AgentContext): Promise<AgentResult> 
         .join("\n\n")
     : "(không có nguồn nào khớp câu hỏi này)";
 
-  const { data, metrics } = await generateStructured<{
+  const { data, metrics } = await generateReply<{
     reply: string;
     suggestions: string[];
     citations: Citation[];
-  }>({
+  }>(context, {
     tier: "light",
     systemInstruction: personaFor(
       "trả lời câu hỏi của khách CHỈ dựa trên các nguồn được cung cấp bên dưới, và khai rõ mã " +

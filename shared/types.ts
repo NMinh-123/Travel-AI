@@ -111,6 +111,14 @@ export interface ChatMessage {
   timestamp: string;
   suggestions?: string[];
   itinerarySnippet?: Partial<ItineraryPlan>;
+  /**
+   * Model vẫn đang viết tin nhắn này.
+   *
+   * Phải hiện ra được ở giao diện, không phải chi tiết nội bộ: nội dung đang chảy CHƯA qua
+   * guardrail, và nó có thể bị thay sạch khi lượt kết thúc. Một con trỏ nhấp nháy là cách nói
+   * với khách rằng đây chưa phải câu trả lời cuối cùng.
+   */
+  streaming?: boolean;
 }
 
 /**

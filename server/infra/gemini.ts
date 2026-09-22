@@ -290,3 +290,210 @@ export async function generateStructured<T>(call: StructuredCall): Promise<Struc
     },
   };
 }
+
+/**
+ * Giải mã phần đầu của một chuỗi JSON, dừng trước mọi chuỗi thoát chưa đủ ký tự.
+ *
+ * Phải tự giải mã chứ không cắt chuỗi thô: model viết `\n` giữa các mục bullet, và đẩy hai ký tự
+ * `\` `n` ra màn hình thì khách thấy đúng hai ký tự đó. Chuỗi thoát nằm vắt qua ranh giới hai
+ * chunk cũng phải giữ lại — một `\` lẻ ở cuối buffer chưa nói được nó sắp thành `\n` hay `\"`.
+ */
+function decodeJsonStringPrefix(source: string): string {
+  const SIMPLE: Record<string, string> = {
+    '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t",
+  };
+  let out = "";
+  let i = 0;
+
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '"') break; // chuỗi đã đóng, phần sau là trường khác
+    if (ch !== "\\") {
+      out += ch;
+      i += 1;
+      continue;
+    }
+
+    const next = source[i + 1];
+    if (next === undefined) break; // `\` lẻ ở cuối buffer: chờ chunk sau
+
+    if (next === "u") {
+      const hex = source.slice(i + 2, i + 6);
+      if (hex.length < 4) break; // `\uXXXX` chưa đủ bốn chữ số
+      if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+        // Không phải mã hợp lệ. Giữ nguyên văn thay vì để parseInt trả NaN và sinh ký tự \0.
+        out += `\\u${hex}`;
+        i += 6;
+        continue;
+      }
+      out += String.fromCharCode(parseInt(hex, 16));
+      i += 6;
+      continue;
+    }
+
+    out += SIMPLE[next] ?? next;
+    i += 2;
+  }
+
+  return out;
+}
+
+const REPLY_KEY = /"reply"\s*:\s*"/;
+
+/**
+ * Rút phần `reply` đã nhận được từ một phản hồi JSON CHƯA HOÀN CHỈNH.
+ *
+ * Đây là mảnh ghép làm cho streaming token chạy được trên một hệ thống mà mọi lượt gọi đều đặt
+ * `responseSchema`: cái chảy về không phải chữ sạch mà là JSON gõ dần — `{"repl`, rồi
+ * `y": "Hà Gi`, rồi `ang có...`. Nối thẳng các chunk đó rồi hiện lên màn hình thì khách đọc được
+ * cả dấu ngoặc và tên trường.
+ *
+ * HAI HÌNH DẠNG ĐẦU RA, vì điểm cuối hiện tại trả về cả hai (xem ghi chú ở `generateStructured`):
+ *
+ *  - JSON đúng hợp đồng: chờ tới khi khoá `reply` xuất hiện rồi mới đẩy chữ ra.
+ *  - Văn xuôi trần, khi proxy bỏ qua `responseMimeType`: chính nó là câu trả lời, đẩy thẳng. Đây
+ *    là đường mà `recoverProseReply` cứu ở cuối lượt, và streaming đi cùng một lối.
+ *
+ * Phân biệt hai hình dạng bằng ký tự đầu tiên khác khoảng trắng: `{` thì là JSON. Cách này có thể
+ * đoán nhầm ở đúng một chunk đầu — và `generateStructuredStream` xử lý việc đó bằng cách kiểm
+ * chuỗi đã đẩy có còn là tiền tố của chuỗi hiện tại không, chứ không tin kết quả ở đây là cuối cùng.
+ */
+export function partialReplyText(raw: string): string {
+  if (!raw) return "";
+
+  // Rào markdown mở đầu (```json) — model bọc JSON trong khối mã là kiểu sai thường gặp nhất.
+  const body = raw.replace(/^\s*```(?:json)?\s*\n?/i, "");
+  const match = REPLY_KEY.exec(body);
+
+  if (!match) {
+    // Đang là JSON nhưng khoá `reply` chưa tới, hoặc schema này không có `reply` (NLU): chưa có
+    // gì để hiện. Ngược lại là văn xuôi, và văn xuôi thì chính nó là câu trả lời.
+    return body.trimStart().startsWith("{") ? "" : body;
+  }
+
+  return decodeJsonStringPrefix(body.slice(match.index + match[0].length));
+}
+
+export interface StreamingCall extends StructuredCall {
+  /** Nhận từng đoạn chữ MỚI của `reply`, đã giải mã, theo đúng thứ tự. */
+  onDelta?: (text: string) => void;
+  /**
+   * Bỏ hết những gì `onDelta` đã đẩy ra trước đó.
+   *
+   * Gọi ở hai tình huống, và cả hai đều có thật: lượt gọi phải thử lại vì phản hồi không phân
+   * giải được JSON (đoạn vừa hiện thuộc về một lượt đã hỏng), và đầu ra đổi hình dạng giữa chừng
+   * từ văn xuôi sang JSON.
+   */
+  onReset?: () => void;
+}
+
+/**
+ * Bản streaming của `generateStructured`.
+ *
+ * HỢP ĐỒNG TRẢ VỀ GIỮ NGUYÊN: vẫn là `{ data, metrics }` với đúng ngữ nghĩa cũ — `data` null khi
+ * không phân giải được, cùng vòng thử lại, cùng nhánh cứu văn xuôi. `onDelta` là thứ DUY NHẤT
+ * thêm vào, và nó chỉ để hiện sớm. Nơi gọi vẫn phải dùng `data` làm kết quả thật, vì đó là thứ đi
+ * qua guardrail; những gì đã đẩy qua `onDelta` chưa được kiểm gì cả.
+ *
+ * VÌ SAO KHÔNG THAY THẾ HẲN `generateStructured`. NLU không có trường `reply` nên không có gì để
+ * stream, tầng đo lường và bộ chấm gọi API không-streaming để so sánh được giữa các lần chạy, và
+ * quan trọng nhất: một lượt gọi có `onDelta` thì hỏng theo kiểu khác — chữ đã ra màn hình rồi mới
+ * biết guardrail chặn. Giữ hai hàm tách nhau để chỗ nào chịu rủi ro đó là chỗ tự khai ra.
+ */
+export async function generateStructuredStream<T>(call: StreamingCall): Promise<StructuredResult<T>> {
+  const ai = getGeminiClient();
+  if (!ai) throw new AiUnavailableError();
+
+  const model = modelFor(call.tier);
+  const startedAt = Date.now();
+
+  const MAX_PARSE_RETRIES = 2;
+  let usage: { promptTokenCount?: number; candidatesTokenCount?: number } | undefined;
+  let raw = "";
+  let data: T | null = null;
+  let retries = 0;
+
+  for (let attempt = 0; attempt <= MAX_PARSE_RETRIES; attempt += 1) {
+    retries = attempt;
+
+    // Lượt trước đã đẩy chữ ra rồi mới hỏng: xoá đi trước khi lượt mới bắt đầu ghi đè, nếu không
+    // khách đọc được hai bản nối đuôi nhau.
+    if (attempt > 0) call.onReset?.();
+
+    await chargeModelCall();
+
+    raw = "";
+    let emitted = "";
+
+    const stream = await ai.models.generateContentStream({
+      model,
+      contents: call.contents,
+      config: {
+        ...(call.systemInstruction ? { systemInstruction: call.systemInstruction } : {}),
+        temperature: call.temperature ?? 0.7,
+        responseMimeType: "application/json",
+        responseSchema: call.schema,
+      },
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.text) raw += chunk.text;
+      // Chunk cuối mang usageMetadata; các chunk trước để trống. Ghi đè để giữ bản đầy đủ nhất.
+      if (chunk.usageMetadata) usage = chunk.usageMetadata;
+      if (!call.onDelta) continue;
+
+      const shown = partialReplyText(raw);
+
+      /**
+       * Chuỗi đã đẩy phải luôn là TIỀN TỐ của chuỗi hiện tại. Không còn đúng nghĩa là hình dạng
+       * đầu ra vừa đổi — đoán nhầm văn xuôi ở chunk đầu rồi hoá ra là JSON. Khi đó xoá và đẩy lại
+       * từ đầu; đây cũng chính là lý do `onDelta` không bao giờ được coi là kết quả cuối cùng.
+       */
+      if (!shown.startsWith(emitted)) {
+        call.onReset?.();
+        emitted = "";
+      }
+      if (shown.length > emitted.length) {
+        call.onDelta(shown.slice(emitted.length));
+        emitted = shown;
+      }
+    }
+
+    data = safeJsonParse(raw) as T | null;
+    if (data !== null) break;
+
+    const where = Object.keys((call.schema as any)?.properties ?? {}).join(",") || "không rõ";
+
+    if (attempt < MAX_PARSE_RETRIES) {
+      console.warn(
+        `Gemini (${model}) [${where}] streaming: phản hồi không phải JSON, thử lại ${attempt + 1}/${MAX_PARSE_RETRIES}.`,
+      );
+    } else {
+      const recovered = recoverProseReply<T>(call.schema, raw);
+      if (recovered) {
+        console.warn(
+          `Gemini (${model}) [${where}] streaming: điểm cuối không trả JSON sau ${MAX_PARSE_RETRIES + 1} ` +
+            `lượt; đã dùng nguyên văn phần văn xuôi làm câu trả lời.`,
+        );
+        data = recovered;
+        break;
+      }
+
+      console.error(
+        `Gemini (${model}) [${where}] streaming: vẫn không phân giải được JSON sau ` +
+          `${MAX_PARSE_RETRIES + 1} lượt. Phản hồi cuối: ${JSON.stringify(raw).slice(0, 200)}`,
+      );
+    }
+  }
+
+  return {
+    data,
+    metrics: {
+      model,
+      latencyMs: Date.now() - startedAt,
+      promptTokens: usage?.promptTokenCount,
+      outputTokens: usage?.candidatesTokenCount,
+      retries,
+    },
+  };
+}

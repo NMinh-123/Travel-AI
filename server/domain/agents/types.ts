@@ -94,7 +94,48 @@ export interface AgentContext {
    * khách không nêu nơi cụ thể nào — khi đó truy xuất không lọc theo địa danh.
    */
   placeSlugs: string[];
+  /**
+   * Kênh đẩy chữ ra ngay khi model viết, khi lượt này đi qua endpoint streaming.
+   *
+   * KHÔNG có nghĩa là tác tử được thay đổi kết quả trả về: `AgentResult.reply` vẫn là câu trả lời
+   * thật và là thứ duy nhất đi qua guardrail. Đây chỉ là một bản xem trước. Tác tử nào không nhận
+   * được nó thì chạy y như cũ, và đó là đường mà `POST /api/chat` cùng bộ chấm vẫn đi.
+   */
+  stream?: AgentStream;
 }
+
+/**
+ * Kênh streaming trao cho tác tử. Tách thành kiểu riêng để chỗ nào đẩy chữ ra ngoài là chỗ đó
+ * phải khai ra trong chữ ký, thay vì lẫn vào một tham số callback vô danh.
+ */
+export interface AgentStream {
+  /** Một đoạn chữ MỚI của câu trả lời, đã khôi phục dữ liệu cá nhân. */
+  delta: (text: string) => void;
+  /** Bỏ hết chữ đã đẩy: lượt gọi phải làm lại, hoặc đầu ra đổi hình dạng giữa chừng. */
+  reset: () => void;
+  /**
+   * Báo tác tử đang ở bước nào.
+   *
+   * Tồn tại vì bước chậm nhất của tác tử tri thức — nhúng vector rồi truy vấn pgvector — nằm
+   * TRƯỚC lượt gọi model, nên nó rơi trọn vào quãng im lặng giữa `agent` và token đầu tiên.
+   * Không có dòng này thì mọi lượt trông như nhau ở phía khách, kể cả khi truy xuất là thứ đang
+   * chiếm phần lớn thời gian chờ.
+   */
+  stage: (stage: "retrieval" | "agent", detail?: string) => void;
+}
+
+/**
+ * Sự kiện đẩy về client trong một lượt streaming.
+ *
+ * `stage` tồn tại vì phần lớn độ trễ của một lượt nằm TRƯỚC token đầu tiên: phân loại ý định là
+ * một lượt gọi model riêng, rồi tới nhúng vector và truy vấn pgvector, rồi mới tới lượt gọi sinh
+ * câu trả lời. Nếu chỉ có `delta` thì khách vẫn ngồi trước một khung trống suốt quãng đó, và
+ * streaming không giải quyết được đúng cái nó sinh ra để giải quyết.
+ */
+export type TurnEvent =
+  | { type: "stage"; stage: "nlu" | "route" | "retrieval" | "agent"; detail?: string }
+  | { type: "delta"; text: string }
+  | { type: "reset" };
 
 export interface EscalationRequest {
   reason: EscalationReason;

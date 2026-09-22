@@ -13,6 +13,23 @@ import React from 'react';
  * nội dung do model sinh ra không thể chèn HTML vào trang.
  */
 
+/**
+ * Con trỏ nhấp nháy cuối một câu trả lời đang được model viết.
+ *
+ * Không phải trang trí: nội dung phía trước nó CHƯA qua guardrail và hoàn toàn có thể bị thay
+ * sạch khi lượt kết thúc. Con trỏ là cách nói với khách rằng đây chưa phải câu trả lời cuối
+ * cùng, nên đừng vội hành động theo nó.
+ *
+ * `aria-hidden` vì nó không mang thông tin đọc được; trạng thái đang chạy được khai bằng
+ * `aria-busy` trên chính bong bóng tin nhắn, nơi trình đọc màn hình đọc được nó một lần.
+ */
+export const StreamingCursor: React.FC = () => (
+  <span
+    aria-hidden="true"
+    className="inline-block w-[2px] h-[1em] translate-y-[2px] ml-0.5 bg-current animate-pulse motion-reduce:animate-none"
+  />
+);
+
 type Block =
   | { kind: 'heading'; text: string }
   | { kind: 'list'; ordered: boolean; items: string[] }

@@ -96,3 +96,66 @@ export class PiiMasker {
 export function hasLeftoverPlaceholder(text: string): boolean {
   return PLACEHOLDER_PROBE.test(text);
 }
+
+/**
+ * Đuôi buffer còn có thể lớn lên thành một placeholder hoàn chỉnh.
+ *
+ * Dạng đầy đủ là `__TÊN_số__`, và biểu thức này phải khớp MỌI tiền tố của nó — kể cả một dấu `_`
+ * lẻ. Bản đầu bắt đầu bằng `__` và sai đúng ở đó: khi chữ về từng ký tự một, dấu `_` đầu tiên
+ * không khớp gì nên bị đẩy đi ngay, dấu thứ hai cũng vậy, và placeholder vỡ làm đôi trước khi có
+ * cơ hội được thay. Lỗi chỉ hiện ra khi chunk nhỏ, tức đúng lúc streaming chạy thật.
+ *
+ * Cố tình KHÔNG liệt kê bốn tên cụ thể: `[A-Z]{0,5}` phủ mọi tên hiện có và cả tên thêm sau này,
+ * còn giữ nhầm một mẩu chữ thường thì chỉ tốn thêm một nhịp chờ chứ không sai kết quả — `flush()`
+ * luôn đẩy nốt phần treo.
+ */
+const PLACEHOLDER_TAIL = /_{1,2}[A-Z]{0,5}(?:_\d*_?)?$/;
+
+/**
+ * Khôi phục dữ liệu cá nhân trên một dòng chữ chảy dần, thay vì trên cả câu trả lời.
+ *
+ * VÌ SAO KHÔNG GỌI THẲNG `PiiMasker.restore` CHO TỪNG ĐOẠN. Model sinh chữ theo token, nên
+ * `__PHONE_1__` hoàn toàn có thể về làm hai đoạn `...gọi số __PHO` và `NE_1__ nhé`. Gọi `restore`
+ * trên từng đoạn thì không đoạn nào chứa đủ placeholder, không đoạn nào được thay, và khách đọc
+ * được nguyên ký hiệu nội bộ giữa câu — đúng thứ `hasLeftoverPlaceholder` sinh ra để chặn.
+ *
+ * Cách làm: giữ lại phần đuôi CÓ THỂ đang là nửa đầu của một placeholder, đẩy phần còn lại đi.
+ * Đuôi giữ lại luôn ngắn (nhiều nhất là độ dài một placeholder) nên chữ không bị khựng thấy được,
+ * và `flush()` ở cuối lượt bảo đảm không nuốt mất đoạn nào.
+ */
+export class StreamingPiiRestorer {
+  private pending = "";
+
+  constructor(private readonly masker: PiiMasker) {}
+
+  /** Trả về phần đã an toàn để hiện. Chuỗi rỗng nghĩa là còn phải chờ thêm chữ. */
+  push(chunk: string): string {
+    this.pending += chunk;
+
+    /**
+     * KHÔI PHỤC TRƯỚC, GIỮ LẠI SAU — thứ tự này là chỗ bản đầu làm ngược và hỏng.
+     *
+     * Làm ngược thì `__` KẾT THÚC một placeholder đã đầy đủ bị đọc thành `__` MỞ ĐẦU một
+     * placeholder mới, nên nó bị giữ lại; phần đẩy đi là `__EMAIL_1` cụt đuôi, không còn khớp
+     * ký hiệu nào để thay, và khách đọc nguyên `__EMAIL_1__` giữa câu — đúng thứ lớp này sinh ra
+     * để chặn. Thay xong rồi mới dò đuôi thì một placeholder đầy đủ đã biến mất khỏi chuỗi, và
+     * thứ còn khớp biểu thức chỉ có thể là một ký hiệu đang viết dở thật.
+     *
+     * `restore` chạy lại trên phần đã khôi phục là vô hại: giá trị thật không chứa ký hiệu nào.
+     */
+    const restored = this.masker.restore(this.pending);
+
+    const match = PLACEHOLDER_TAIL.exec(restored);
+    const safeEnd = match ? match.index : restored.length;
+
+    this.pending = restored.slice(safeEnd);
+    return restored.slice(0, safeEnd);
+  }
+
+  /** Đẩy nốt phần còn treo. Gọi khi model đã viết xong, kể cả khi lượt bị huỷ giữa chừng. */
+  flush(): string {
+    const rest = this.pending;
+    this.pending = "";
+    return this.masker.restore(rest);
+  }
+}
