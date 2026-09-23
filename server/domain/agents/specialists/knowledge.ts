@@ -504,7 +504,24 @@ export async function runKnowledge(context: AgentContext): Promise<AgentResult> 
     suggestions: string[];
     citations: Citation[];
   }>(context, {
-    tier: "light",
+    /**
+     * TẦNG MẠNH, không phải tầng nhẹ — và lý do là ĐỘ TRỄ chứ không phải chất lượng câu chữ.
+     *
+     * Lời gọi này mang lược đồ nặng nhất hệ thống: `citations[]` là mảng object lồng `claim` kèm
+     * `sourceIds[]`. Đo ngày 2026-09-22 qua proxy đang dùng, `gemini-2.5-flash-lite` chỉ trả đúng
+     * lược đồ 2/5 lượt với chính bộ trường này, còn `gemini-2.5-flash` đạt 5/5. Hệ quả của việc
+     * trượt không phải là một lỗi thấy được mà là một LƯỢT GỌI NỮA: lần chạy holdout ngày
+     * 2026-09-23 có 55% số lượt phải gửi lại, mỗi lần thêm 7–9 giây vào một lượt vốn đã 17 giây.
+     *
+     * Nên tầng nhẹ ở đây không hề rẻ hơn. Nó trả tiền cho hai lượt flash-lite trong quá nửa số
+     * lần, cộng thêm thời gian chờ nhân đôi, để đổi lấy giá đơn vị thấp hơn ở lượt đầu tiên.
+     *
+     * Các tác tử còn lại CHƯA đổi, nhưng không phải vì đã chứng minh chúng ổn: cùng lần chạy đó,
+     * 11/16 lượt đi qua `support` cũng phải gửi lại, dù lược đồ của nó không lồng mảng object.
+     * Số lần gửi lại hiện chỉ được ghi theo LƯỢT, gộp cả NLU lẫn tác tử, nên chưa tách được phần
+     * nào thuộc về ai — tách ra được thì mới biết có nên đổi tầng cho chúng hay không.
+     */
+    tier: "strong",
     systemInstruction: personaFor(
       "trả lời câu hỏi của khách CHỈ dựa trên các nguồn được cung cấp bên dưới, và khai rõ mã " +
         "nguồn cho từng ý trong câu trả lời",
