@@ -17,6 +17,28 @@ const scorer = path.join(root, "eval/score/ragas_score.py");
 
 class EvalError extends Error {}
 
+/**
+ * Mô tả lỗi đủ để sửa, nhưng đã bỏ khoá đi.
+ *
+ * Bản trước ghi đúng một câu "không ghi thông điệp provider để bảo vệ bí mật". An toàn, nhưng ba
+ * lần chạy hỏng liên tiếp ngày 2026-09-22 không ai đọc ra nổi vì sao — mà mỗi lần chạy lại là hai
+ * mươi phút và ngót nghìn lượt gọi. Thứ duy nhất phải giấu là khoá API; lớp lỗi, mã HTTP và câu
+ * chữ của provider lại chính là những gì phân biệt "điểm cuối quá tải" với "gửi sai tham số".
+ * Giấu luôn cả chúng thì cổng phát hành báo đỏ mà không ai hành động được.
+ */
+function describeError(error: unknown): string {
+  const raw = error as { status?: unknown; code?: unknown; message?: unknown; cause?: { message?: unknown } } | null;
+  const parts = [(error as { constructor?: { name?: string } } | null)?.constructor?.name ?? "Error"];
+  if (raw?.status !== undefined) parts.push(`status=${String(raw.status)}`);
+  if (raw?.code !== undefined) parts.push(`code=${String(raw.code)}`);
+  const cause = raw?.cause?.message ? ` | nguyên nhân: ${String(raw.cause.message)}` : "";
+  const text = `${parts.join(" ")}: ${String(raw?.message ?? error)}${cause}`;
+  // Đọc thẳng từ môi trường: `config` được import trễ trong main() để lỗi thiếu biến báo đúng
+  // tên khoá, nên ở tầm module này chưa có nó.
+  const key = process.env.GEMINI_API_KEY?.trim();
+  return key ? text.split(key).join("***") : text;
+}
+
 /** Không chuyển stderr của SDK ra ngoài: thông điệp provider có thể chứa dữ liệu xác thực. */
 function score(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -115,7 +137,7 @@ async function main(): Promise<number> {
   const selected = sample(matched, options.limit);
   if (!selected.length) throw new EvalError("Bộ lọc không chọn được kịch bản nào");
   if (selected.length < matched.length) {
-    console.warn(`Chỉ chạy ${selected.length}/${matched.length} kịch bản do --limit; con số ra KHÔNG dùng để báo cáo. Bỏ --limit để chạy đủ.`);
+    console.warn(`Chỉ chạy ${selected.length}/${matched.length} kịch bản do --limit (mặc định 30, bỏ cờ đi vẫn là 30); con số ra KHÔNG dùng để báo cáo. Chạy đủ: --limit ${matched.length}.`);
   }
   if (!options.skipScore && !selected.some((row) => !row.out_of_scope && row.expected_docs.length > 0)) {
     throw new EvalError("Cần ít nhất một kịch bản có expected_docs để tính RAGAS; dùng --skip-score nếu chỉ kiểm phần tất định.");
@@ -200,9 +222,16 @@ async function main(): Promise<number> {
     const saveMeta = (): Promise<void> => writeFile(path.join(out, "meta.json"), JSON.stringify(meta, null, 2) + "\n");
     await saveMeta();
 
+    // Kịch bản đang đo, để lần hỏng nói được nó chết ở đâu chứ không chỉ nói là đã chết.
+    let measuring: string | null = null;
+
     try {
+      // Lượt chat chỉ thử lại 2 lần vì có người đang chờ. Ở đây không ai chờ, mà một nhịp
+      // quá tải thoáng qua của điểm cuối lại làm hỏng trọn cả lần đo hàng trăm lượt.
+      process.env.GEMINI_MAX_RETRIES ??= "5";
       const { handleTurn } = await import("@server/domain/agents/orchestrator");
       for (const row of selected) {
+        measuring = row.id;
         console.log(`Đang đo ${row.id} (${row.turns.length} lượt)`);
         const rows = await runCase(row, { now: new Date(now), timestamp, handleTurn });
         const last = rows[rows.length - 1];
@@ -254,7 +283,10 @@ async function main(): Promise<number> {
       return report.gate.passed ? 0 : 2;
     } catch (error) {
       meta.status = "FAIL";
-      await writeFile(path.join(out, "error.json"), JSON.stringify({ status: "FAIL", message: error instanceof EvalError ? error.message : "Đo thất bại; không ghi thông điệp provider để bảo vệ bí mật." }, null, 2));
+      const detail = error instanceof EvalError ? error.message : describeError(error);
+      const where = measuring ? `Hỏng khi đang đo ${measuring}` : "Hỏng trước khi đo kịch bản nào";
+      await writeFile(path.join(out, "error.json"), JSON.stringify({ status: "FAIL", case: measuring, message: detail }, null, 2));
+      console.error(`${where}: ${detail}`);
       throw error;
     } finally {
       meta.generation_calls = generationCalls;

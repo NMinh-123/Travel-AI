@@ -50,7 +50,13 @@ METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context_rec
 #
 # Vẫn KHÔNG có điểm thay thế: hết ba lần thì hàng đó làm hỏng cả lần chạy đúng như trước. Thứ
 # thay đổi ở đây là ngưỡng chịu đựng với một lỗi tạm thời, không phải nguyên tắc không bịa điểm.
-PROVIDER_ATTEMPTS = 3
+#
+# Ba lượt vẫn chưa đủ. Ngày 2026-09-22, sau khi đã nâng lên ba, một lần chạy nữa chết ở GS-038 —
+# ba lượt cách nhau 3, 6 rồi 9 giây gói gọn trong 18 giây, tức vẫn nằm trọn trong một đợt quá tải.
+# Bộ chấm chạy theo lô và KHÔNG có ai ngồi chờ, khác hẳn một lượt chat, nên ngưỡng chịu đựng ở đây
+# không có lý do gì phải chặt: sáu lượt trải ra 63 giây vẫn rẻ hơn nhiều so với việc vứt đi một
+# giờ chấm và phải đo lại từ đầu.
+PROVIDER_ATTEMPTS = 6
 PROVIDER_BACKOFF_S = 3
 
 
