@@ -432,7 +432,29 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
         const fallback = await deps.runSupport(quiet(context), reason);
         recordAgent("support", fallback);
         agent = "support";
-        result = { ...fallback, calls: [...result.calls, ...fallback.calls], retrieval: result.retrieval };
+        /**
+         * GIỮ LẠI CHỨNG CỨ ĐÃ TRUY XUẤT, DÙ CÂU TRẢ LỜI BỊ VỨT.
+         *
+         * `evidence` và `retrievedDocIds` mô tả TRUY XUẤT tìm được gì — một sự thật độc lập với
+         * việc câu trả lời dựng trên nó có qua được guardrail hay không. Bản trước thay nguyên
+         * `result` bằng kết quả của tác tử hỗ trợ, mà tác tử ấy không truy xuất gì, nên mọi lượt
+         * chuyển tiếp đều được ghi lại là truy xuất rỗng.
+         *
+         * Hậu quả là bốn chỉ số của bộ đo — tỷ lệ truy xuất rỗng, Recall@k, hit@1, MRR — bị kéo
+         * theo TỈ LỆ CHUYỂN TIẾP chứ không đo chất lượng truy xuất. Đo ngày 2026-09-23: GS-035 và
+         * GS-134 đều bị ghi `retrieved_docs: []`, trong khi chạy lại đúng câu hỏi ấy thì tài liệu
+         * kỳ vọng nằm ở HẠNG 1 của cả hai.
+         *
+         * `citedDocIds` thì KHÔNG giữ, và sự khác biệt ở đây là có chủ đích: trích dẫn là thuộc
+         * tính của câu trả lời vừa bị vứt, nên giữ lại là ghi công cho một câu không ai đọc.
+         */
+        result = {
+          ...fallback,
+          calls: [...result.calls, ...fallback.calls],
+          retrieval: result.retrieval,
+          evidence: result.evidence,
+          retrievedDocIds: result.retrievedDocIds,
+        };
       }
     }
   }

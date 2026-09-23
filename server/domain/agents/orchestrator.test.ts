@@ -159,6 +159,32 @@ describe("KE-14…KE-20: đường đi thật với phụ thuộc ra ngoài đư
     expect(out.trace.path[3]).toMatchObject({ reason: "LOW_CONFIDENCE" });
   });
 
+  /**
+   * Chuyển tiếp vì guardrail chặn KHÔNG được xoá dấu vết truy xuất. Bốn chỉ số của bộ đo — tỷ lệ
+   * truy xuất rỗng, Recall@k, hit@1, MRR — đọc `trace.evidence`, nên mất nó là chúng đo tỉ lệ
+   * chuyển tiếp thay vì đo chất lượng truy xuất. Đo ngày 2026-09-23: GS-035 và GS-134 bị ghi
+   * truy xuất rỗng, trong khi chạy lại đúng câu hỏi thì tài liệu kỳ vọng nằm hạng 1.
+   */
+  it("guardrail chặn: vẫn giữ chứng cứ đã truy xuất, nhưng bỏ trích dẫn của câu bị vứt", async () => {
+    const blocked: AgentResult = {
+      ...answer,
+      reply: "Không có căn cứ",
+      grounding: "insufficient",
+      evidence: [{ id: "K1", kind: "knowledge", label: "Phố cổ", text: "...", sourceRef: "attraction:pho-co", docId: "doc-1" }],
+      retrievedDocIds: ["doc-1"],
+      citedDocIds: ["doc-1"],
+    };
+    const deps = fixture({}, blocked);
+
+    const out = await handleTurn(input, deps);
+
+    expect(out.trace.escalated).toBe(true);
+    expect(out.trace.retrievedDocIds).toEqual(["doc-1"]);
+    expect(out.trace.evidence).toHaveLength(1);
+    // Trích dẫn thuộc về câu trả lời vừa bị vứt, nên KHÔNG được ghi công.
+    expect(out.trace.citedDocIds).toEqual([]);
+  });
+
   it.each([
     { confidence: 0.2, wantsHuman: false, reason: "LOW_CONFIDENCE" },
     { confidence: 0.2, wantsHuman: true, reason: "USER_REQUEST" },

@@ -243,7 +243,15 @@ async function main(): Promise<number> {
          * RAGAS chấm một câu không có ngữ cảnh chỉ tạo ra một điểm 0 giả — nó không phân biệt
          * được "trả lời sai" với "không có gì để bám vào".
          */
-        const ragas = !row.out_of_scope && row.expected_docs.length > 0 && last.contexts.length > 0 && last.reply.trim().length > 0;
+        /**
+         * Lượt CHUYỂN TIẾP không vào RAGAS, và nay phải nói ra điều đó bằng một điều kiện tường
+         * minh. Trước đây nó đúng nhờ một tác dụng phụ: chuyển tiếp làm mất luôn `evidence`, nên
+         * `contexts` rỗng và phép kiểm bên dưới tự loại nó. Từ khi chứng cứ được giữ lại để bốn
+         * chỉ số truy xuất đo đúng, tác dụng phụ ấy mất — và nếu không chặn ở đây thì RAGAS sẽ
+         * chấm câu "đã ghi nhận và chuyển cho nhân viên" dựa trên mấy đoạn tri thức về đường đèo,
+         * rồi cho faithfulness thấp vì một lý do chẳng liên quan gì tới chất lượng trả lời.
+         */
+        const ragas = !row.out_of_scope && !last.escalated && row.expected_docs.length > 0 && last.contexts.length > 0 && last.reply.trim().length > 0;
         await appendFile(path.join(out, "dataset.jsonl"), JSON.stringify({
           id: row.id, kind: row.kind, group: row.group, split: row.split, variant: row.variant,
           out_of_scope: row.out_of_scope, question: row.question, reference: row.reference,
