@@ -240,16 +240,22 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
    * Văn mất bao lâu" nhắc Hà Nội — nằm ngoài địa bàn — nhưng vẫn là câu hỏi hợp lệ vì Đồng Văn
    * nhận diện được.
    *
-   * Hai nguồn tín hiệu: `resolved.unknown` là tên NLU trích ra mà từ điển không có, còn `outOfArea`
-   * là danh sách chặn tường minh. Cần cả hai vì nguồn thứ nhất phụ thuộc vào một lượt gọi model —
-   * NLU bỏ sót hoặc chưa cấu hình được API key thì chỉ còn nguồn thứ hai đứng lại.
+   * CHỈ tin `outOfArea`, tức danh sách chặn tường minh. Bản trước tin thêm `resolved.unknown` —
+   * những tên NLU trích ra mà từ điển không có — và đó là một sai lầm đo được: mảng `destinations`
+   * do model trả về chứa cả CỤM DANH TỪ CHUNG, không riêng tên riêng. Lần chạy đánh giá ngày
+   * 2026-09-22 cho thấy "Chợ phiên vùng cao", "bản sát biên giới" và "nhà người Mông" đều bị xếp
+   * là địa danh lạ, và cả ba lượt bị chuyển tiếp OUT_OF_SCOPE trước khi truy xuất kịp chạy — trong
+   * khi tài liệu trả lời đúng nằm sẵn trong kho, một trong số đó ở độ tương đồng 0.75.
+   *
+   * Bỏ tín hiệu ấy đi KHÔNG mở cửa cho câu hỏi ngoài địa bàn: guardrail căn cứ ở cuối lượt vẫn
+   * chuyển tiếp OUT_OF_SCOPE khi truy xuất không có gì để bám vào. Chặn sớm bằng một tín hiệu do
+   * model sinh ra chỉ thêm ca từ chối nhầm, không thêm lớp bảo vệ nào mà phía sau chưa có.
    */
-  const offTopicPlace =
-    (resolved.unknown.length > 0 || outOfArea.length > 0) && placeSlugs.length === 0;
+  const offTopicPlace = outOfArea.length > 0 && placeSlugs.length === 0;
   path.push({
     node: "place_resolve", outcome: offTopicPlace ? "out_of_area" : placeSlugs.length ? "resolved" : "empty",
     detail: placeSlugs.join(","),
-    ...(offTopicPlace ? { reason: [...resolved.unknown, ...outOfArea].join(",") } : {}),
+    ...(offTopicPlace ? { reason: outOfArea.join(",") } : {}),
   });
 
   // Trigger 1 và 3 của Mục 10.6: khách yêu cầu gặp người thật, hoặc ý định không đủ tin cậy.
@@ -286,7 +292,29 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
     result = await deps.runSupport(context, forcedReason);
     recordAgent(agent, result);
   } else {
-    path.push({ node: "route", outcome: "agent", detail: agent });
+    /**
+     * NLU đoán `support` mà khách KHÔNG xin gặp người: thử tra kho trước khi chuyển tiếp.
+     *
+     * Tới được nhánh này nghĩa là `wantsHuman` bằng false và độ tin cậy đủ cao, nên nhãn `support`
+     * ở đây hoàn toàn là phỏng đoán về GIỌNG ĐIỆU. Mô tả ý định trong prompt gộp "khiếu nại, sự
+     * cố" vào một nhóm còn "an toàn, thủ tục" vào nhóm khác, và hai vùng đó chồng lên nhau đúng ở
+     * chỗ khách đang lo lắng. Lần chạy đánh giá ngày 2026-09-22 có bốn câu rơi vào đó, trong đó
+     * GS-116 là "Có người rơi xuống vực thì gọi số nào?" — hệ thống trả lời "vượt quá khả năng hỗ
+     * trợ tự động của tôi" trong khi tài liệu số khẩn cấp nằm ngay hạng 1.
+     *
+     * Tác tử hỗ trợ theo thiết kế KHÔNG tra kho (`tool_status = not_used`), nên một câu bị gán
+     * nhầm nhãn là một câu mất hẳn cơ hội được trả lời. Đổi lại, câu hỏi "kho có trả lời được
+     * không" đáng tin hơn hẳn câu "bộ phân loại nói gì", và ở đây nó KHÔNG tốn thêm lượt gọi nào:
+     * guardrail căn cứ ngay bên dưới đã sẵn sàng chuyển tiếp khi tác tử tri thức không bám được
+     * vào đâu. Khiếu nại thật vẫn về đúng tác tử hỗ trợ, chỉ là đi qua một cửa kiểm chứng.
+     */
+    const guessedSupport = agent === "support";
+    if (guessedSupport) agent = "knowledge";
+
+    path.push({
+      node: "route", outcome: "agent", detail: agent,
+      ...(guessedSupport ? { reason: "support_thu_tra_kho_truoc" } : {}),
+    });
     input.onEvent?.({ type: "stage", stage: "route", detail: agent });
     const missing = missingSlots(agent, slots);
     if (missing.length > 0) {
@@ -339,8 +367,14 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
          * và thêm một giá trị là một migration cơ sở dữ liệu. Lý do CHÍNH XÁC vẫn không mất: nó
          * nằm ở nút guardrail trong trace ngay phía trên, cùng danh sách dữ kiện không kiểm được.
          */
-        const reason: EscalationReason =
-          blocked === "insufficient" || blocked === "unsupported" ? "OUT_OF_SCOPE" : "COMPLAINT";
+        /**
+         * Lượt vừa được chuyển từ `support` sang `knowledge` ở trên thì giữ nguyên `COMPLAINT` —
+         * đúng lý do mà nó đã mang nếu không có cửa kiểm chứng đó. Không làm vậy thì mọi khiếu
+         * nại thật đều bị ghi thành OUT_OF_SCOPE và số liệu chuyển tiếp mất nghĩa.
+         */
+        const reason: EscalationReason = guessedSupport
+          ? "COMPLAINT"
+          : blocked === "insufficient" || blocked === "unsupported" ? "OUT_OF_SCOPE" : "COMPLAINT";
         const fallback = await deps.runSupport(quiet(context), reason);
         recordAgent("support", fallback);
         agent = "support";

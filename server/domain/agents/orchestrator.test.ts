@@ -48,6 +48,48 @@ describe("KE-14…KE-20: đường đi thật với phụ thuộc ra ngoài đư
     expect(out.trace.path[3]).toMatchObject({ reason: "OUT_OF_SCOPE", detail: "support" });
     expect(deps.runAgent).not.toHaveBeenCalled();
   });
+  /**
+   * Mảng `destinations` của NLU chứa cả cụm danh từ chung, không riêng tên riêng. Coi mọi tên
+   * không tra được là "địa danh ngoài địa bàn" đã khiến ba kịch bản holdout bị chuyển tiếp trước
+   * khi truy xuất kịp chạy, dù tài liệu trả lời đúng nằm sẵn trong kho.
+   */
+  it("cụm danh từ chung không tra được KHÔNG phải cớ để chuyển tiếp", async () => {
+    const deps = fixture();
+    deps.resolvePlaceNames = vi.fn(async () => ({ slugs: [], unknown: ["Chợ phiên vùng cao"] }));
+    const out = await handleTurn({ ...input, message: "Chợ phiên vùng cao họp theo lịch nào?" }, deps);
+    expect(sequence(out)).toEqual([
+      "nlu:ok", "temporal:none", "place_resolve:empty", "route:agent",
+      "slot_gate:complete", "agent:ok", "guardrail:pass", "respond:ok",
+    ]);
+    expect(deps.runSupport).not.toHaveBeenCalled();
+    // Không tra được địa danh nào thì truy xuất chạy KHÔNG lọc địa danh, chứ không bỏ cuộc.
+    expect(deps.runAgent).toHaveBeenCalledWith("knowledge", expect.objectContaining({ placeSlugs: [] }));
+  });
+
+  /**
+   * Nhãn `support` khi khách không xin gặp người chỉ là phỏng đoán giọng điệu. GS-116 của bộ vàng
+   * — "Có người rơi xuống vực thì gọi số nào?" — bị gán nhãn ấy và nhận về một câu chuyển tiếp,
+   * trong khi tài liệu số khẩn cấp nằm sẵn ở hạng 1.
+   */
+  it("NLU đoán support mà khách không xin gặp người: tra kho trước, trả lời được thì trả lời", async () => {
+    const deps = fixture({ intent: "support" });
+    const out = await handleTurn({ ...input, message: "Có người rơi xuống vực thì gọi số nào?" }, deps);
+    expect(deps.runAgent).toHaveBeenCalledWith("knowledge", expect.anything());
+    expect(deps.runSupport).not.toHaveBeenCalled();
+    expect(out.trace.escalated).toBe(false);
+    expect(out.trace.path[3]).toMatchObject({ node: "route", detail: "knowledge" });
+  });
+
+  it("khiếu nại thật vẫn về tác tử hỗ trợ, và giữ đúng lý do COMPLAINT", async () => {
+    const deps = fixture(
+      { intent: "support" },
+      { ...answer, reply: "Không có căn cứ", grounding: "insufficient", citedDocIds: [], retrievedDocIds: [] },
+    );
+    const out = await handleTurn({ ...input, message: "Tôi bị trừ tiền hai lần" }, deps);
+    expect(deps.runSupport).toHaveBeenCalledWith(expect.anything(), "COMPLAINT");
+    expect(out.trace.escalated).toBe(true);
+  });
+
   it.each([
     { confidence: 0.2, wantsHuman: false, reason: "LOW_CONFIDENCE" },
     { confidence: 0.2, wantsHuman: true, reason: "USER_REQUEST" },
