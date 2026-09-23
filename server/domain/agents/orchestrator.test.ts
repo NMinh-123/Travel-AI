@@ -120,6 +120,45 @@ describe("KE-14…KE-20: đường đi thật với phụ thuộc ra ngoài đư
     expect(context.retrievalQuery).toBe("Mèo Vạc ăn sáng thì nên ăn gì?");
   });
 
+  /**
+   * GS-186 và GS-200: với đúng lịch sử của chúng, NLU trả độ tin cậy 0,40–0,45 ở cả ba lần chạy và
+   * nhãn lật giữa `support` với `itinerary`. Model không sai khi thiếu tự tin — câu tách khỏi ngữ
+   * cảnh thì thật sự mơ hồ. Nhưng `extractSlots` đọc được `travelMode: easy_rider` từ chính câu
+   * đó bằng regex, nên chuyển tiếp nó là chuyển tiếp một lượt mà ta vừa hiểu.
+   */
+  it("lượt sửa lại việc đang làm dở không bị chuyển tiếp vì độ tin cậy thấp", async () => {
+    const deps = fixture({ intent: "support", confidence: 0.4 });
+
+    const out = await handleTurn(
+      { ...input, message: "À cho mình thuê người lái thôi", previousIntent: "itinerary", slots: { days: 3 } },
+      deps,
+    );
+
+    expect(deps.runSupport).not.toHaveBeenCalled();
+    expect(out.trace.escalated).toBe(false);
+    // Tiếp tục ĐÚNG việc đang làm, không nhảy sang nhãn mà NLU vừa đoán.
+    expect(deps.runAgent).toHaveBeenCalledWith("itinerary", expect.anything());
+  });
+
+  it("câu cụt KHÔNG bổ sung gì thì vẫn chuyển tiếp như cũ", async () => {
+    const deps = fixture({ intent: "support", confidence: 0.4 });
+
+    const out = await handleTurn(
+      { ...input, message: "ừ", previousIntent: "itinerary", slots: { days: 3 } },
+      deps,
+    );
+
+    expect(out.trace.path[3]).toMatchObject({ reason: "LOW_CONFIDENCE" });
+  });
+
+  it("chưa có việc đang làm dở thì độ tin cậy thấp vẫn chuyển tiếp", async () => {
+    const deps = fixture({ intent: "support", confidence: 0.4 });
+
+    const out = await handleTurn({ ...input, message: "đi 3 ngày bằng xe máy" }, deps);
+
+    expect(out.trace.path[3]).toMatchObject({ reason: "LOW_CONFIDENCE" });
+  });
+
   it.each([
     { confidence: 0.2, wantsHuman: false, reason: "LOW_CONFIDENCE" },
     { confidence: 0.2, wantsHuman: true, reason: "USER_REQUEST" },

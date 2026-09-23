@@ -84,9 +84,23 @@ const TRAVEL_MODE_PATTERNS: [RegExp, Slots["travelMode"]][] = [
   [/o\s*to|oto|xe\s*hoi|xe\s*4\s*cho|xe\s*7\s*cho|suv|car\b/, "car_suv"],
 ];
 
+/**
+ * Mức ngân sách. Ngoài các từ gọi thẳng tên mức, bảng còn bắt cách nói SO SÁNH NHẤT — "loại tốt
+ * nhất", "xịn nhất", "rẻ nhất" — vì đó là cách khách đổi ý giữa chừng thay vì gọi lại tên mức.
+ *
+ * GS-200 của bộ vàng là đúng ca đó: khách nói "Mình muốn đi kiểu tiết kiệm thôi" rồi đổi sang
+ * "Thôi đổi sang loại tốt nhất đi". Câu sau không chứa từ nào trong bảng cũ, nên slot vẫn kẹt ở
+ * `backpacker` và tác tử ngân sách tính lại theo mức khách vừa bỏ.
+ *
+ * Neo vào "nhat" chứ không bắt "tot" đứng một mình: "chỗ nào tốt" là câu hỏi ý kiến, không phải
+ * lệnh đổi hạng.
+ */
 const BUDGET_PATTERNS: [RegExp, Slots["budgetLevel"]][] = [
-  [/tiet\s*kiem|gia\s*re|backpack|phuot\s*bui|di\s*bui|budget|sinh\s*vien/, "backpacker"],
-  [/cao\s*cap|sang\s*trong|luxury|resort|5\s*sao|hang\s*sang/, "luxury"],
+  [/tiet\s*kiem|gia\s*re|backpack|phuot\s*bui|di\s*bui|budget|sinh\s*vien|re\s*nhat/, "backpacker"],
+  [
+    /cao\s*cap|sang\s*trong|luxury|resort|5\s*sao|hang\s*sang|(tot|xin|ngon|dep|xa\s*xi)\s*nhat/,
+    "luxury",
+  ],
   [/thoai\s*mai|tieu\s*chuan|tam\s*trung|comfort|vua\s*phai/, "comfort"],
 ];
 

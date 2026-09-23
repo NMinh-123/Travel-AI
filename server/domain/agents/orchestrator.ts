@@ -6,6 +6,7 @@ import { TraceCollector } from "./trace";
 import { resolve } from "@server/domain/temporal/router";
 import { mergeTemporalPhrases } from "@server/domain/temporal/phrases";
 import { mergeSlots, missingSlots, questionFor } from "./dialog";
+import { extractSlots } from "./slotExtract";
 import { inspect } from "./guardrail";
 import { classifyFailure, type FailureClass } from "./failure";
 import { runBudget } from "./specialists/budget";
@@ -33,6 +34,14 @@ export interface TurnInput {
   message: string;
   slots: Slots;
   history: { role: "user" | "assistant"; content: string }[];
+  /**
+   * Tác tử đã phục vụ lượt gần nhất của phiên này — tức VIỆC ĐANG LÀM DỞ.
+   *
+   * Dialog Manager mang slot qua các lượt nhưng không mang việc, nên một câu sửa lại yêu cầu cũ
+   * ("À cho mình thuê người lái thôi") đứng một mình thì không còn đủ nghĩa để phân loại. Nơi gọi
+   * lấy từ `ChatMessage.agent` đã lưu sẵn; bỏ trống thì hành vi y như trước.
+   */
+  previousIntent?: Intent;
   /**
    * Kênh đẩy tiến trình và chữ ra ngay trong lúc lượt đang chạy. Chỉ endpoint streaming truyền
    * vào; thiếu nó thì `handleTurn` chạy y hệt bản cũ và trả về đúng một lần ở cuối.
@@ -276,14 +285,41 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
     ...(offTopicPlace ? { reason: outOfArea.join(",") } : {}),
   });
 
+  /**
+   * ĐỘ TIN CẬY THẤP Ở MỘT LƯỢT SỬA LẠI VIỆC ĐANG LÀM DỞ KHÔNG PHẢI LÀ KHÔNG HIỂU.
+   *
+   * Đo ngày 2026-09-23 trên GS-186 và GS-200: với đúng lịch sử hội thoại của chúng, NLU trả về độ
+   * tin cậy 0,40–0,45 ở CẢ BA lần chạy, và nhãn lật qua lại giữa `support` với `itinerary`. Model
+   * không sai khi thiếu tự tin — "À cho mình thuê người lái thôi" tách khỏi ngữ cảnh thì thật sự
+   * mơ hồ. Thứ giải nghĩa nó nằm ở việc đang làm dở, không nằm trong câu.
+   *
+   * Nhưng hai câu ấy ĐƯỢC HIỂU: `extractSlots` — mã tất định, không gọi model — rút ra
+   * `travelMode: easy_rider` và `budgetLevel: luxury` từ chính chúng. Chuyển tiếp một lượt mà
+   * chính ta vừa đọc hiểu bằng regex là chuyển tiếp nhầm.
+   *
+   * Nên trigger LOW_CONFIDENCE chỉ bỏ qua khi CẢ HAI điều kiện cùng đúng: có việc đang làm dở, và
+   * lượt này tự nó cung cấp được thông tin. Thiếu một trong hai thì escalation giữ nguyên — một
+   * câu cụt không bổ sung gì vẫn là câu mà hệ thống nên nhận là mình không hiểu.
+   */
+  const amendsOngoingTask =
+    input.previousIntent !== undefined && Object.keys(extractSlots(input.message)).length > 0;
+
   // Trigger 1 và 3 của Mục 10.6: khách yêu cầu gặp người thật, hoặc ý định không đủ tin cậy.
   const forcedReason: EscalationReason | null = nlu.wantsHuman
     ? "USER_REQUEST"
-    : nlu.confidence < MIN_INTENT_CONFIDENCE
+    : nlu.confidence < MIN_INTENT_CONFIDENCE && !amendsOngoingTask
       ? "LOW_CONFIDENCE"
       : offTopicPlace
         ? "OUT_OF_SCOPE"
         : null;
+
+  /**
+   * Nhãn ý định của lượt này không đáng tin (đo được: lật giữa hai lần chạy cùng một câu), nên
+   * tiếp tục đúng việc đang làm thay vì nhảy sang việc khác vì một lần đoán.
+   */
+  if (amendsOngoingTask && nlu.confidence < MIN_INTENT_CONFIDENCE) {
+    agent = input.previousIntent as Intent;
+  }
 
   /**
    * Ghi lại quyết định định tuyến.

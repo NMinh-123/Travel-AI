@@ -13,7 +13,7 @@ import { rateLimit } from "@server/middleware/rateLimit";
 import { parseSlots } from "@server/domain/agents/dialog";
 import { handleTurn, type TurnOutput } from "@server/domain/agents/orchestrator";
 import { PiiMasker, StreamingPiiRestorer } from "@server/domain/agents/pii";
-import type { TurnEvent } from "@server/domain/agents/types";
+import { INTENTS, type Intent, type TurnEvent } from "@server/domain/agents/types";
 
 /**
  * Kênh hội thoại. Thay cho endpoint /api/chat inline trong server.ts (nay là server/index.ts) trước Vòng 5.
@@ -55,6 +55,23 @@ async function loadSession(sessionId: string, userId: string | null, recentOnly 
   if (session.userId && session.userId !== userId) return null;
   if (recentOnly) session.messages.reverse();
   return session;
+}
+
+/**
+ * Việc đang làm dở của phiên: tác tử đã phục vụ lượt trợ lý gần nhất.
+ *
+ * Không cần cột mới — `ChatMessage.agent` đã lưu sẵn từ trước. Dùng nó để một câu sửa lại yêu cầu
+ * cũ ("À cho mình thuê người lái thôi") không bị chuyển tiếp chỉ vì nhãn ý định của riêng nó
+ * không đủ tin cậy. Xem `amendsOngoingTask` trong orchestrator.
+ */
+function previousIntentOf(messages: { role: string; agent: string | null }[]): Intent | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const agent = messages[index].agent;
+    if (messages[index].role === "assistant" && agent && INTENTS.includes(agent as Intent)) {
+      return agent as Intent;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -190,6 +207,7 @@ chatRouter.post("/", chatLimiter, async (req: Request, res: Response, next) => {
       message: prepared.maskedMessage,
       slots: parseSlots(prepared.session.slots),
       history: prepared.maskedHistory,
+      previousIntent: previousIntentOf(prepared.session.messages),
     });
 
     const { reply, suggestions } = await persistTurn(
@@ -287,6 +305,7 @@ chatRouter.post("/stream", chatLimiter, async (req: Request, res: Response, next
       message: turn.maskedMessage,
       slots: parseSlots(turn.session.slots),
       history: turn.maskedHistory,
+      previousIntent: previousIntentOf(turn.session.messages),
       onEvent: (event: TurnEvent) => {
         if (event.type === "delta") {
           const text = restorer.push(event.text);

@@ -376,6 +376,8 @@ async function runCase(row: GoldenCase, deps: RunDeps): Promise<TurnRow[]> {
       message: turn.message,
       slots,
       history: [...history],
+      // Bộ đo phải mang việc đang làm dở y như production, nếu không nó đo một hệ thống khác.
+      previousIntent: rows.length > 0 ? (rows[rows.length - 1].agent as never) : undefined,
     });
 
     /**
