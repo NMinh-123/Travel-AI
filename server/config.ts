@@ -348,6 +348,28 @@ export const config = {
    * nên nó cắt phần treo chứ không cắt nhầm câu trả lời đang sinh dở.
    */
   geminiTimeoutMs: readNumber("GEMINI_TIMEOUT_MS", 30_000, 1_000, 600_000),
+  /**
+   * Hạn thời gian cho lượt gọi NẶNG: sinh lịch trình nhiều ngày, và lượt thử cuối trên model dự
+   * phòng. Mặc định 120 giây.
+   *
+   * Tách khỏi `geminiTimeoutMs` vì hai con số canh hai thứ khác nhau. Hạn 30 giây sinh ra để một
+   * lượt chat treo không bắt khách chờ năm phút — và nó làm đúng việc đó. Nhưng nó cắt luôn cả
+   * việc sinh lịch trình hợp lệ: đo ngày 2026-09-23, GS-192 ("Mình đi 3 ngày") chết với
+   * `AbortError` ở tác tử lịch trình, và log ghi ba lần như vậy trong một lượt chạy. Nâng hạn
+   * chung lên thì mất lại chính cái chặn đuôi đã đạt được, nên hạn được đặt theo LOẠI VIỆC.
+   */
+  geminiLongTimeoutMs: readNumber("GEMINI_LONG_TIMEOUT_MS", 120_000, 1_000, 600_000),
+  /**
+   * Model dùng cho LƯỢT THỬ CUỐI khi model tầng hiện tại cứ trả văn xuôi thay vì JSON.
+   *
+   * Đo ngày 2026-09-23: 6 trên 10 ca từ chối nhầm đều chạm trần thử lại (5–9 lần) với
+   * `gemini-2.5-flash-lite` ở lược đồ câu trả lời `[reply,suggestions,citations]`. Khi hết lượt,
+   * `recoverProseReply` cứu được câu chữ nhưng mất trích dẫn, guardrail đọc ra "không có căn cứ"
+   * rồi chuyển tiếp — dù truy xuất đã tìm đúng tài liệu. Leo tầng ở lượt cuối giữ phần lớn lượt
+   * gọi trên model rẻ, còn lượt đã hỏng nhiều lần thì được một model tuân lược đồ tốt hơn.
+   * Để trống thì tắt hẳn việc leo tầng.
+   */
+  geminiModelFallback: process.env.GEMINI_MODEL_FALLBACK?.trim() ?? "gemini-2.5-pro",
   geminiModel: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash",
   /**
    * Tầng nhẹ theo SRS Mục 11.4.5: phân loại ý định, trích xuất thực thể, trả lời FAQ ngắn —

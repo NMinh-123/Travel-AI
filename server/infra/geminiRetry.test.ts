@@ -42,6 +42,7 @@ vi.mock("@google/genai", async (importOriginal) => {
 });
 
 const { generateStructured, generateStructuredStream } = await import("./gemini");
+const { config } = await import("@server/config");
 
 const SCHEMA = { type: "OBJECT", properties: { reply: { type: "STRING" } } } as never;
 const ANSWER = '{"reply": "Đèo Mã Pí Lèng dài khoảng 20 km."}';
@@ -222,5 +223,58 @@ describe("ngân sách thử lại nới được qua môi trường", () => {
     await assertion;
 
     expect(generateContent).toHaveBeenCalledTimes(3);
+  });
+});
+
+/**
+ * LEO TẦNG Ở LƯỢT THỬ CUỐI khi model cứ trả văn xuôi.
+ *
+ * Đo ngày 2026-09-23: 6/10 ca từ chối nhầm chạm trần thử lại với `gemini-2.5-flash-lite` ở lược đồ
+ * câu trả lời. Hết lượt thì `recoverProseReply` cứu được câu chữ nhưng mất trích dẫn, và guardrail
+ * chuyển tiếp dù truy xuất đã tìm đúng tài liệu.
+ */
+describe("leo tầng sang model dự phòng", () => {
+  beforeEach(() => {
+    queue.length = 0;
+    generateContent.mockClear();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const modelOf = (index: number) => (generateContent.mock.calls[index] as any)[0].model;
+  const timeoutOf = (index: number) => (generateContent.mock.calls[index] as any)[0].config.httpOptions?.timeout;
+
+  it("hai lượt văn xuôi thì lượt cuối chạy trên model dự phòng, với hạn dài", async () => {
+    queue.push("Đây là văn xuôi, không phải JSON.", "Lại văn xuôi nữa.", ANSWER);
+
+    const result = await generateStructured<{ reply: string }>({
+      tier: "light", contents: "câu hỏi", schema: SCHEMA,
+    } as never);
+
+    expect(result.data).not.toBeNull();
+    expect(modelOf(0)).not.toBe(config.geminiModelFallback);
+    expect(modelOf(2)).toBe(config.geminiModelFallback);
+    expect(timeoutOf(2)).toBe(config.geminiLongTimeoutMs);
+    // Metrics phải ghi đúng model đã trả lời, không ghi model của lượt đầu.
+    expect(result.metrics.model).toBe(config.geminiModelFallback);
+  });
+
+  it("lỗi MẠNG thì KHÔNG leo tầng: vấn đề không nằm ở model", async () => {
+    queue.push(providerError("The service is overloaded", 503), ANSWER);
+
+    await generateStructured<{ reply: string }>({ tier: "light", contents: "câu hỏi", schema: SCHEMA } as never);
+
+    expect(modelOf(1)).toBe(modelOf(0));
+    expect(timeoutOf(1)).toBeUndefined();
+  });
+
+  it("lượt đầu đã ra JSON thì không bao giờ chạm tới model dự phòng", async () => {
+    queue.push(ANSWER);
+
+    await generateStructured<{ reply: string }>({ tier: "light", contents: "câu hỏi", schema: SCHEMA } as never);
+
+    expect(generateContent).toHaveBeenCalledTimes(1);
+    expect(modelOf(0)).not.toBe(config.geminiModelFallback);
   });
 });

@@ -342,6 +342,29 @@ function wait(ms: number): Promise<void> {
 }
 
 /**
+ * Model cho lượt thử thứ `attempt`: LEO LÊN model dự phòng ở lượt cuối, nếu các lượt trước đều
+ * trả văn xuôi thay vì JSON.
+ *
+ * Chỉ leo khi lỗi là VĂN XUÔI, không leo khi lỗi là mạng hay quá tải. Văn xuôi nghĩa là model
+ * hiện tại không tuân lược đồ, và gửi lại cho đúng model ấy thường ra đúng kiểu hỏng ấy — đo ngày
+ * 2026-09-23, các ca hỏng chạm trần 5–9 lượt liên tiếp. Còn lỗi mạng thì lượt sau trên cùng model
+ * vẫn có cơ hội đi lọt, và leo tầng chỉ tốn thêm tiền cho một vấn đề không nằm ở model.
+ *
+ * Lượt leo tầng dùng `geminiLongTimeoutMs`: model mạnh chậm hơn hẳn, đo được 13–17 giây cho một
+ * câu ngắn, nên hạn 30 giây của lượt thường sẽ cắt ngang đúng lượt đang được trông cậy nhất.
+ */
+function modelForAttempt(
+  base: string,
+  attempt: number,
+  budget: number,
+  proseFailures: number,
+): { model: string; escalated: boolean } {
+  const fallback = config.geminiModelFallback;
+  const escalated = attempt === budget && proseFailures > 0 && fallback !== "" && fallback !== base;
+  return { model: escalated ? fallback : base, escalated };
+}
+
+/**
  * Một lần gọi sinh nội dung có schema, kèm đo độ trễ và token.
  *
  * `data` trả về null khi model trả JSON không đọc được — cố tình không throw, vì mỗi tác tử
@@ -382,6 +405,8 @@ export async function generateStructured<T>(call: StructuredCall): Promise<Struc
   let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
   let data: T | null = null;
   let retries = 0;
+  let proseFailures = 0;
+  let usedModel = model;
 
   for (let attempt = 0; attempt <= MAX_PARSE_RETRIES; attempt += 1) {
     retries = attempt;
@@ -394,11 +419,18 @@ export async function generateStructured<T>(call: StructuredCall): Promise<Struc
      */
     await chargeModelCall();
 
+    const current = modelForAttempt(model, attempt, MAX_PARSE_RETRIES, proseFailures);
+    usedModel = current.model;
+    if (current.escalated) {
+      console.warn(`Gemini (${model}): ${proseFailures} lượt trả văn xuôi, lượt cuối chuyển sang ${current.model}.`);
+    }
+
     try {
       response = await clientAt(slot + attempt).models.generateContent({
-        model,
+        model: current.model,
         contents: call.contents,
         config: {
+          ...(current.escalated ? { httpOptions: { timeout: config.geminiLongTimeoutMs } } : {}),
           ...(call.systemInstruction ? { systemInstruction: call.systemInstruction } : {}),
           temperature: call.temperature ?? 0.7,
           responseMimeType: "application/json",
@@ -417,6 +449,7 @@ export async function generateStructured<T>(call: StructuredCall): Promise<Struc
 
     data = safeJsonParse(response.text) as T | null;
     if (data !== null) break;
+    proseFailures += 1;
 
     // Nhãn suy từ chính schema thay vì thêm một tham số mới: mỗi nơi gọi có bộ trường riêng
     // (`intent,confidence,...` cho NLU, `reply,suggestions` cho câu trả lời), nên nó đủ để biết
@@ -451,7 +484,7 @@ export async function generateStructured<T>(call: StructuredCall): Promise<Struc
   return {
     data,
     metrics: {
-      model,
+      model: usedModel,
       latencyMs: Date.now() - startedAt,
       promptTokens: response?.usageMetadata?.promptTokenCount,
       outputTokens: response?.usageMetadata?.candidatesTokenCount,
@@ -583,6 +616,8 @@ export async function generateStructuredStream<T>(call: StreamingCall): Promise<
   let raw = "";
   let data: T | null = null;
   let retries = 0;
+  let proseFailures = 0;
+  let usedModel = model;
 
   for (let attempt = 0; attempt <= MAX_PARSE_RETRIES; attempt += 1) {
     retries = attempt;
@@ -592,6 +627,12 @@ export async function generateStructuredStream<T>(call: StreamingCall): Promise<
     if (attempt > 0) call.onReset?.();
 
     await chargeModelCall();
+
+    const current = modelForAttempt(model, attempt, MAX_PARSE_RETRIES, proseFailures);
+    usedModel = current.model;
+    if (current.escalated) {
+      console.warn(`Gemini (${model}): ${proseFailures} lượt trả văn xuôi, lượt cuối chuyển sang ${current.model}.`);
+    }
 
     raw = "";
     let emitted = "";
@@ -605,9 +646,10 @@ export async function generateStructuredStream<T>(call: StreamingCall): Promise<
      */
     try {
       const stream = await clientAt(slot + attempt).models.generateContentStream({
-        model,
+        model: current.model,
         contents: call.contents,
         config: {
+          ...(current.escalated ? { httpOptions: { timeout: config.geminiLongTimeoutMs } } : {}),
           ...(call.systemInstruction ? { systemInstruction: call.systemInstruction } : {}),
           temperature: call.temperature ?? 0.7,
           responseMimeType: "application/json",
@@ -649,6 +691,7 @@ export async function generateStructuredStream<T>(call: StreamingCall): Promise<
 
     data = safeJsonParse(raw) as T | null;
     if (data !== null) break;
+    proseFailures += 1;
 
     const where = Object.keys((call.schema as any)?.properties ?? {}).join(",") || "không rõ";
 
@@ -677,7 +720,7 @@ export async function generateStructuredStream<T>(call: StreamingCall): Promise<
   return {
     data,
     metrics: {
-      model,
+      model: usedModel,
       latencyMs: Date.now() - startedAt,
       promptTokens: usage?.promptTokenCount,
       outputTokens: usage?.candidatesTokenCount,
