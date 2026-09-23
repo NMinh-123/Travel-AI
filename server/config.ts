@@ -376,8 +376,17 @@ export const config = {
    * khoảng 70% lượt gọi. Phân tầng không chỉ để giảm chi phí mà còn giảm độ trễ trung bình,
    * giúp giữ ngưỡng ≤ 3 giây của NFR-PERF-03 dễ hơn.
    */
+  /**
+   * Mặc định `gemini-2.5-flash` — tức CÙNG model với tầng mạnh, và điều đó là có chủ ý.
+   *
+   * Proxy đang dùng phục vụ các bản lite lúc được lúc không, và hỏng theo đợt: `gemini-3.1-flash-lite`
+   * ngày 2026-09-22, rồi `gemini-2.5-flash-lite` ngày 2026-09-24 — lượt NLU thật chỉ đạt 1/8 (400 và
+   * treo) trong khi `gemini-2.5-flash` đạt 8/8 cùng thời điểm. Một lượt NLU hỏng là cả lượt hội
+   * thoại hỏng, vì NLU chạy trước mọi thứ khác. Phân tầng theo SRS 11.4.5 vẫn giữ được bằng cách
+   * đặt biến này khi có một model nhẹ chạy ổn định; đổi thì đo lại theo hướng dẫn ở .env.example.
+   */
   geminiModelLight:
-    process.env.GEMINI_MODEL_LIGHT?.trim() || "gemini-2.5-flash-lite",
+    process.env.GEMINI_MODEL_LIGHT?.trim() || "gemini-2.5-flash",
   databaseUrl,
   jwtSecret: readJwtSecret(),
   /**
