@@ -481,7 +481,31 @@ export const config = {
    * thì lại phải đo lại — đó là lý do hai giá trị này là biến môi trường chứ không phải hằng số.
    * Đặt cả hai về 0 là tắt lọc.
    */
-  ragMinVectorSimilarity: readNumber("RAG_MIN_VECTOR_SIMILARITY", 0.6, 0, 1),
+  /**
+   * ĐÃ ĐO LẠI NGÀY 2026-09-23, hạ từ 0,6 xuống 0,55.
+   *
+   * Hai con số này vốn đo trên kho 31 đoạn; kho nay có 167, và chính `db:ingest` cảnh báo mỗi lần
+   * chạy rằng chúng phải được đo lại. Quét bằng `scripts/retrieval-ablation.ts --split dev` —
+   * dev chứ không phải holdout, đúng quy ước vặn tham số:
+   *
+   *   min-vector   Recall@5   MRR     hit@1    truy xuất rỗng   p50
+   *   0,45         1,0000     0,9500  0,9000   0,0000           99ms
+   *   0,50         1,0000     0,9750  0,9500   0,0000           99ms
+   *   0,55         1,0000     0,9750  0,9500   0,0000           101ms
+   *   0,60 (cũ)    0,9500     0,9250  0,9000   0,0250           97ms
+   *
+   * 0,55 tốt hơn 0,60 ở MỌI luật đang được canh, với độ trễ y hệt. So với 0,50 thì hai mức cho
+   * kết quả trùng nhau ở các luật ấy, nhưng 0,55 kéo theo ít đoạn không liên quan hơn vào ngữ
+   * cảnh — thứ vừa tốn token vừa cho model thêm cơ hội bám nhầm.
+   */
+  ragMinVectorSimilarity: readNumber("RAG_MIN_VECTOR_SIMILARITY", 0.55, 0, 1),
+  /**
+   * GIỮ 0,35 sau khi đo lại cùng ngày, và lý do giữ đáng ghi lại. Nâng lên 0,45 cho các chỉ số
+   * của nhánh lai y hệt 0,35 mà Precision còn đẹp hơn — nhưng nó làm sụp nhánh CHẠY SUY GIẢM:
+   * riêng nhánh từ khoá, Recall@5 rơi từ 0,7250 xuống 0,2250 và truy xuất rỗng vọt lên 0,7500.
+   * Đó đúng là cấu hình chạy khi sidecar embedding chết, nên tối ưu con số ở trạng thái khoẻ
+   * bằng cách bỏ rơi trạng thái hỏng là một đánh đổi tồi.
+   */
   ragMinKeywordRank: readNumber("RAG_MIN_KEYWORD_RANK", 0.35, 0, 1),
 
   /**
