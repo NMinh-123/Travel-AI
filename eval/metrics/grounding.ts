@@ -81,7 +81,22 @@ export function scoreGrounding(records: EvalRecord[]): GroundingScores {
   for (const turn of turns) statuses[turn.grounding] += 1;
 
   const answered = turns.filter((turn) => turn.reply.trim().length > 0);
-  const withEvidence = answered.filter((turn) => turn.contexts.length > 0);
+
+  /**
+   * Mẫu số của `cited_answer_rate` loại lượt ĐÃ CHUYỂN TIẾP, và điều kiện này phải nói ra tường
+   * minh chứ không dựa vào một tác dụng phụ như trước.
+   *
+   * Trước bản vá "chuyển tiếp không xoá dấu vết truy xuất", một lượt bị guardrail chặn mất luôn
+   * `contexts`, nên nó tự rơi khỏi mẫu số. Nay chứng cứ được giữ lại — đúng, vì truy xuất có tìm
+   * được thật — và nếu không loại ở đây thì lượt ấy bị tính là "có chứng cứ mà không dẫn nguồn".
+   * Đo được: chỉ số rơi từ 0.9434 xuống 0.7813 chỉ vì mẫu số phình từ 53 lên 64 lượt.
+   *
+   * Câu chuyển tiếp KHÔNG dẫn nguồn là hành vi ĐÚNG — nó không khẳng định gì để mà dẫn. Chỉ số
+   * này hỏi "câu trả lời có chứng minh được nguồn của mình không", nên một lượt không trả lời thì
+   * không thuộc phạm vi câu hỏi đó. Việc nó bị chặn đã được đếm ở `false_refusal_rate` và
+   * `correct_refusal_rate` rồi; đếm lần thứ hai ở đây là phạt cùng một sự kiện hai lần.
+   */
+  const withEvidence = answered.filter((turn) => turn.contexts.length > 0 && !turn.escalated);
   const ratio = (hits: number, total: number): number => (total === 0 ? 0 : hits / total);
 
   /**
