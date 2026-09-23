@@ -67,6 +67,19 @@ export const WEB_SOURCES: WebSource[] = [
     crawlable: true,
   },
 
+  {
+    id: "vietnamtourism-nongthon-bai-da-co-nam-dan",
+    url: "https://nongthon.vietnamtourism.gov.vn/ve-dep-bi-an-cua-bai-da-co-nam-dan-ha-giang/",
+    purpose:
+      "Chuyên trang du lịch nông thôn của Cục Du lịch, bài về di tích khảo cổ cấp quốc gia Bãi " +
+      "đá cổ Nấm Dẩn. Chọn nguồn nhà nước vì niên đại và xếp hạng di tích là đúng chỗ mà blog du " +
+      "lịch hay chép lệch nhau. Lấp khoảng trống của Place `bai-da-co-nam-dan`. " +
+      "Đã thử `tuyengiao.hagiang.gov.vn` trước: trang dựng bằng JavaScript, crawler chỉ bóc được " +
+      "27 ký tự nên không dùng được.",
+    domain: "attraction",
+    tier: "official",
+    crawlable: true,
+  },
   // ---------------------------------------------------------------------------
   // press — báo chí chính thống. Mạnh nhất ở tin thời sự: sạt lở, cấm đường, sự kiện, lễ hội.
   // ---------------------------------------------------------------------------
@@ -154,6 +167,50 @@ export const WEB_SOURCES: WebSource[] = [
     crawlable: true,
   },
 
+  {
+    id: "vnexpress-lang-du-lich-pa-vi",
+    url: "https://vnexpress.net/tu-bai-dat-lay-thanh-lang-du-lich-pa-vi-noi-tieng-the-gioi-4951713.html",
+    purpose:
+      "Làng văn hoá du lịch cộng đồng dân tộc Mông thôn Pả Vi Hạ, ngay chân đèo Mã Pí Lèng. Lấp " +
+      "khoảng trống của Place `lang-van-hoa-pa-vi-ha`. " +
+      "Đã thử trang Cục Du lịch `vietnamtourism.gov.vn/post/60465` trước — đúng tier hơn — nhưng " +
+      "nó dựng bằng JavaScript và crawler chỉ bóc được 6 ký tự.",
+    domain: "attraction",
+    tier: "press",
+    crawlable: true,
+  },
+  {
+    id: "vnexpress-chieu-lau-thi",
+    url: "https://vnexpress.net/san-may-tren-dinh-chieu-lau-thi-4246378.html",
+    purpose:
+      "Bài về đỉnh Chiêu Lầu Thi, ngọn cao thứ hai Hà Giang và là điểm săn mây chính của Hoàng " +
+      "Su Phì. Lấp khoảng trống của Place `dinh-chieu-lau-thi`, đồng thời bù cho phía TÂY tỉnh — " +
+      "vùng gần như vắng mặt trong kho hiện tại so với trục Đồng Văn – Mèo Vạc.",
+    domain: "attraction",
+    tier: "press",
+    crawlable: true,
+  },
+  {
+    id: "vnexpress-suoi-thau",
+    url: "https://vnexpress.net/suoi-thau-thao-nguyen-chau-au-o-ha-giang-4462972.html",
+    purpose:
+      "Bài về thảo nguyên Suôi Thầu ở Xín Mần. Lấp khoảng trống của Place `thao-nguyen-suoi-thau`, " +
+      "cùng nhóm phía tây với Chiêu Lầu Thi.",
+    domain: "attraction",
+    tier: "press",
+    crawlable: true,
+  },
+  {
+    id: "vnexpress-tam-giac-mach-suoi-thau",
+    url: "https://vnexpress.net/mua-hoa-tam-giac-mach-tren-thao-nguyen-suoi-thau-4666124.html",
+    purpose:
+      "Mùa hoa tam giác mạch trên Suôi Thầu. Nhắm vào lĩnh vực `seasonal_recommendation` — lĩnh " +
+      "vực mỏng nhất kho, chỉ 5 đoạn trên tổng 162, trong khi 'đi mùa nào' là một trong những " +
+      "câu khách hỏi nhiều nhất.",
+    domain: "seasonal_recommendation",
+    tier: "press",
+    crawlable: true,
+  },
   // ---------------------------------------------------------------------------
   // operator — đơn vị lữ hành và nhà cung cấp dịch vụ. Có lợi ích thương mại: đọc dè dặt.
   // ---------------------------------------------------------------------------
@@ -227,6 +284,18 @@ export const WEB_SOURCES: WebSource[] = [
   // ---------------------------------------------------------------------------
   // community — blog và nền tảng đánh giá. Tốt cho kinh nghiệm thực tế, kém cho số liệu.
   // ---------------------------------------------------------------------------
+  {
+    id: "mia-dong-lung-khuy",
+    url: "https://mia.vn/cam-nang-du-lich/kham-pha-dong-lung-khuy-muon-mau-muon-ve-de-nhat-dong-ha-giang-3587",
+    purpose:
+      "Động Lùng Khúy ở Quản Bạ. Lấp khoảng trống của Place `dong-lung-khuy`. Đặt ở tier " +
+      "`community` vì không tìm được bài của cơ quan nhà nước hay báo chính thống về điểm này — " +
+      "nghĩa là phần GIÁ VÉ và giờ mở cửa trong bài phải đối chiếu lại trước khi biên tập, còn " +
+      "phần mô tả hang và đường đi thì dùng được.",
+    domain: "attraction",
+    tier: "community",
+    crawlable: true,
+  },
   {
     id: "mia-cam-nang",
     url: "https://mia.vn/cam-nang-du-lich",

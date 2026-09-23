@@ -6,6 +6,7 @@ import { SIGHTSEEING_KNOWLEDGE } from "@data/knowledge/sightseeing";
 import { ACCOMMODATION_KNOWLEDGE } from "@data/knowledge/accommodation";
 import { TRAVEL_GUIDE_KNOWLEDGE } from "@data/knowledge/travel-guide";
 import { POLICY_KNOWLEDGE } from "@data/knowledge/policy";
+import { WEB_KNOWLEDGE } from "@data/knowledge/web";
 import type { KnowledgeSourceDoc } from "@data/knowledge/types";
 
 export type {
@@ -25,10 +26,11 @@ export { SIGHTSEEING_KNOWLEDGE } from "@data/knowledge/sightseeing";
 export { ACCOMMODATION_KNOWLEDGE } from "@data/knowledge/accommodation";
 export { TRAVEL_GUIDE_KNOWLEDGE } from "@data/knowledge/travel-guide";
 export { POLICY_KNOWLEDGE } from "@data/knowledge/policy";
+export { WEB_KNOWLEDGE } from "@data/knowledge/web";
 export { WEB_SOURCES } from "@data/knowledge/web-sources";
 
 /**
- * Toàn bộ kho tri thức, gộp tám tệp nguồn theo đúng sáu mặt nội dung của SRS Mục 11.1.1.5.
+ * Toàn bộ kho tri thức, gộp chín tệp nguồn theo đúng sáu mặt nội dung của SRS Mục 11.1.1.5.
  *
  * `scripts/ingest-knowledge.ts` chỉ nên đọc hằng này chứ không import từng file: thêm một mặt
  * nội dung mới thì sửa ở đây một lần, còn quên sửa script ingest là thêm cả một nhóm tri thức mà
@@ -44,4 +46,5 @@ export const ALL_KNOWLEDGE: KnowledgeSourceDoc[] = [
   ...ACCOMMODATION_KNOWLEDGE,
   ...TRAVEL_GUIDE_KNOWLEDGE,
   ...POLICY_KNOWLEDGE,
+  ...WEB_KNOWLEDGE,
 ];
