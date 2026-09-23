@@ -231,9 +231,8 @@ async function main(): Promise<number> {
       // quá tải thoáng qua của điểm cuối lại làm hỏng trọn cả lần đo hàng trăm lượt.
       process.env.GEMINI_MAX_RETRIES ??= "5";
       const { handleTurn } = await import("@server/domain/agents/orchestrator");
-      for (const row of selected) {
+      const measureOne = async (row: GoldenCase): Promise<void> => {
         measuring = row.id;
-        console.log(`Đang đo ${row.id} (${row.turns.length} lượt)`);
         const rows = await runCase(row, { now: new Date(now), timestamp, handleTurn });
         const last = rows[rows.length - 1];
         /**
@@ -255,6 +254,52 @@ async function main(): Promise<number> {
         }) + "\n");
         meta.generation_calls = generationCalls;
         await saveMeta();
+      };
+
+      /**
+       * MỘT KỊCH BẢN HỎNG KHÔNG ĐƯỢC PHÉP VỨT ĐI CẢ LẦN ĐO.
+       *
+       * Bản trước ném ngay ở kịch bản đầu tiên gặp lỗi, và ngày 2026-09-23 một HTTP 400 của
+       * provider ở GS-028 đã kết thúc lượt chạy khi mới đo được 8 trên 67 — hai mươi phút và gần
+       * hai trăm lượt gọi model bỏ đi, trong khi 8 kịch bản đã đo xong thì vẫn đúng.
+       *
+       * Kiểu hỏng này ngẫu nhiên: đo lại đúng kịch bản ấy ngay sau đó thì nó chạy trọn. Nên gom
+       * các ca hỏng lại rồi đo LẠI MỘT LƯỢT ở cuối, thay vì dừng cả lần chạy.
+       *
+       * KHÔNG phải nới lỏng tiêu chuẩn: ca nào vẫn hỏng sau lượt hai thì lần chạy vẫn thất bại
+       * và không có phán quyết cổng nào được đưa ra — bộ dữ liệu thiếu kịch bản thì mọi con số
+       * trên nó đều vô nghĩa. Thứ đổi ở đây là không vứt phần đã làm được.
+       */
+      const failed: GoldenCase[] = [];
+      for (const [index, row] of selected.entries()) {
+        console.log(`Đang đo ${row.id} (${row.turns.length} lượt) — ${index + 1}/${selected.length}`);
+        try {
+          await measureOne(row);
+        } catch (error) {
+          failed.push(row);
+          console.warn(`  ${row.id} hỏng, để lại đo cuối lượt: ${describeError(error)}`);
+        }
+      }
+
+      if (failed.length > 0) {
+        console.log(`Đo lại ${failed.length} kịch bản đã hỏng: ${failed.map((row) => row.id).join(", ")}`);
+        const stillFailing: string[] = [];
+        for (const row of failed) {
+          console.log(`Đang đo lại ${row.id}`);
+          try {
+            await measureOne(row);
+          } catch (error) {
+            stillFailing.push(`${row.id} (${describeError(error)})`);
+          }
+        }
+        if (stillFailing.length > 0) {
+          throw new EvalError(
+            `${stillFailing.length}/${selected.length} kịch bản hỏng cả hai lượt đo, nên bộ dữ liệu ` +
+              `KHÔNG đủ để áp cổng: ${stillFailing.join("; ")}. ` +
+              `Phần đã đo nằm ở ${out}; chạy lại riêng các ca đó bằng --ids, hoặc chạy lại cả lượt.`,
+          );
+        }
+        console.log(`Đo lại xong, đủ ${selected.length} kịch bản.`);
       }
 
       const records = parseDataset(await readFile(path.join(out, "dataset.jsonl"), "utf8"));
@@ -284,10 +329,16 @@ async function main(): Promise<number> {
       return report.gate.passed ? 0 : 2;
     } catch (error) {
       meta.status = "FAIL";
+      /**
+       * `EvalError` đã tự mang đủ ngữ cảnh — kể cả danh sách kịch bản hỏng sau hai lượt đo — nên
+       * gắn thêm "Hỏng khi đang đo X" vào trước nó chỉ tạo ra một câu tự mâu thuẫn.
+       */
       const detail = error instanceof EvalError ? error.message : describeError(error);
-      const where = measuring ? `Hỏng khi đang đo ${measuring}` : "Hỏng trước khi đo kịch bản nào";
+      const where = error instanceof EvalError
+        ? null
+        : measuring ? `Hỏng khi đang đo ${measuring}` : "Hỏng trước khi đo kịch bản nào";
       await writeFile(path.join(out, "error.json"), JSON.stringify({ status: "FAIL", case: measuring, message: detail }, null, 2));
-      console.error(`${where}: ${detail}`);
+      console.error(where ? `${where}: ${detail}` : detail);
       throw error;
     } finally {
       meta.generation_calls = generationCalls;
