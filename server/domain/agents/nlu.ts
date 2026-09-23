@@ -3,6 +3,7 @@ import type { Schema } from "@google/genai";
 import { generateStructured, type CallMetrics } from "@server/infra/gemini";
 import { INTENTS, type Intent, type NluResult, type Slots } from "./types";
 import { extractSlots } from "./slotExtract";
+import { normalizePlaceName } from "@data/places/normalize";
 import { sanitizeModelPhrases } from "@server/domain/temporal/phrases";
 
 /**
@@ -30,7 +31,10 @@ const NLU_SCHEMA: Schema = {
     },
     wantsHuman: {
       type: Type.BOOLEAN,
-      description: "True khi khách yêu cầu gặp nhân viên thật, hoặc đang khiếu nại/gặp sự cố khẩn.",
+      description:
+        "True khi khách yêu cầu gặp nhân viên thật, hoặc đang khiếu nại/gặp sự cố khẩn. " +
+        'Ngoại lệ: "thuê người lái", "thuê tài xế", "đi tour có hướng dẫn viên" là dịch vụ du ' +
+        "lịch khách đang chọn cho chuyến đi, không phải yêu cầu gặp nhân viên hỗ trợ.",
     },
     destinations: {
       type: Type.ARRAY,
@@ -107,6 +111,53 @@ function positive(value: unknown, max: number): number | undefined {
 export interface NluOutcome {
   result: NluResult;
   metrics: CallMetrics;
+}
+
+/**
+ * KHÁCH ĐÒI GẶP NGƯỜI — đọc tất định, kết hợp với `wantsHuman` của model.
+ *
+ * Model bật trường này sai theo CẢ HAI chiều, đo ngày 2026-09-23 trên bộ holdout:
+ *   - Bỏ sót: "Cho tôi nói chuyện với nhân viên tư vấn thật." (GS-171) và "Đoàn tôi đang mắc kẹt
+ *     vì sạt lở, cần hỗ trợ khẩn cấp." (GS-174) đều ra `false`. Lượt đầu bị chuyển với lý do sai;
+ *     lượt sau được trả lời bằng một đoạn tri thức về sạt lở thay vì được đưa tới câu chuyển tiếp
+ *     có số cứu hộ 113/115/114.
+ *   - Bật nhầm: "À cho mình thuê người lái thôi" (GS-186) ra `true`, dù mô tả trường trong lược đồ
+ *     ĐÃ ghi rõ thuê tài xế không phải xin gặp nhân viên. Model phớt lờ một chỉ dẫn tường minh.
+ */
+const HUMAN_REQUEST = new RegExp(
+  [
+    String.raw`(noi|tro)\s*chuyen\s*(voi|cung)\s*(nhan\s*vien|nguoi\s*that|tu\s*van\s*vien|admin)`,
+    String.raw`gap\s*(nhan\s*vien|nguoi\s*that|tu\s*van\s*vien|quan\s*ly)`,
+    String.raw`(nhan\s*vien|tu\s*van\s*vien)\s*(tu\s*van\s*)?(that|con\s*nguoi)`,
+    String.raw`(can|xin)\s*(ho\s*tro|giup\s*do?|cuu)\s*(khan\s*cap|gap)`,
+    String.raw`mac\s*ket`,
+    String.raw`cuu\s*(voi|toi|minh|chung\s*toi)`,
+  ].join("|"),
+);
+
+export function asksForHuman(message: string): boolean {
+  return HUMAN_REQUEST.test(normalizePlaceName(message));
+}
+
+/**
+ * Gộp phán đoán của model với phép đọc tất định.
+ *
+ * NGUYÊN TẮC: mã được BẬT tự do, nhưng chỉ được TẮT trong đúng một trường hợp hẹp. Khách đòi gặp
+ * người thì phải được gặp — trigger 1 của SRS Mục 10.6 — nên bật thừa chỉ tốn một lượt chuyển
+ * tiếp, còn tắt nhầm là bỏ rơi một người đang cần giúp.
+ *
+ * Trường hợp được tắt: câu thuê một người làm dịch vụ — `extractSlots` đã đọc ra
+ * `travelMode: easy_rider` — VÀ không có cụm nào đòi gặp nhân viên hay xin cứu giúp. Tắt ở đây
+ * không phải là đoán thay khách; đó là thực thi đúng quy tắc mà chính lược đồ đã ghi, khi model
+ * không tự tuân theo. Câu "thuê người lái mà xe hỏng giữa đèo, cứu với" vẫn giữ `true`.
+ *
+ * Nhóm khẩn cấp chỉ bắt lời XIN GIÚP, không bắt câu HỎI THÔNG TIN an toàn ("gọi số nào"): câu hỏi
+ * thông tin đáng được trả lời bằng chính con số.
+ */
+export function resolveWantsHuman(modelSaysHuman: boolean, message: string, entities: Slots): boolean {
+  if (asksForHuman(message)) return true;
+  if (modelSaysHuman && entities.travelMode === "easy_rider") return false;
+  return modelSaysHuman;
 }
 
 export async function classify(
@@ -208,7 +259,10 @@ export async function classify(
     : 0;
 
   return {
-    result: { intent, confidence, entities, temporalPhrases, wantsHuman: data.wantsHuman === true },
+    result: {
+      intent, confidence, entities, temporalPhrases,
+      wantsHuman: resolveWantsHuman(data.wantsHuman === true, message, entities),
+    },
     metrics,
   };
 }
