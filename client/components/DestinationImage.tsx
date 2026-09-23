@@ -16,13 +16,13 @@ export const DestinationImage: React.FC<{ photo: DestinationPhoto; name: string;
       {/* Ghi công luôn hiện — ảnh CC BY và CC BY-SA đòi điều đó, bỏ đi là vi phạm giấy phép.
           Nhưng chỉ ảnh có giấy phép ĐÃ XÁC MINH mới thành liên kết: với ảnh chưa rõ giấy phép,
           trang gốc không nói gì về quyền sử dụng, nên dẫn người xem sang đó chỉ gợi ý sai rằng
-          ở đấy có thứ để kiểm. */}
+          ở đấy có thứ để kiểm. Ảnh chưa xác minh chỉ hiện tên nguồn, không hiện nhãn giấy phép. */}
       {!illustration && photo.credit && (linked
         ? <a href={photo.sourcePage} target="_blank" rel="noopener noreferrer"
             className="relative z-30 inline-flex min-h-6 items-center text-[10px] underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-white">
             {photo.credit} · {photo.license}
           </a>
-        : <span className="block text-[10px] opacity-90">{photo.credit} · {photo.license}</span>)}
+        : <span className="block text-[10px] opacity-90">{photo.credit}</span>)}
     </div>
   </div>;
 };
