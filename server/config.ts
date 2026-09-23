@@ -360,12 +360,12 @@ export const config = {
    */
   geminiLongTimeoutMs: readNumber("GEMINI_LONG_TIMEOUT_MS", 120_000, 1_000, 600_000),
   /**
-   * Model dùng cho LƯỢT THỬ CUỐI khi model tầng hiện tại cứ trả văn xuôi thay vì JSON.
+   * Model dùng từ LƯỢT THỬ LẠI THỨ HAI khi model tầng hiện tại cứ trả văn xuôi thay vì JSON.
    *
    * Đo ngày 2026-09-23: 6 trên 10 ca từ chối nhầm đều chạm trần thử lại (5–9 lần) với
    * `gemini-2.5-flash-lite` ở lược đồ câu trả lời `[reply,suggestions,citations]`. Khi hết lượt,
    * `recoverProseReply` cứu được câu chữ nhưng mất trích dẫn, guardrail đọc ra "không có căn cứ"
-   * rồi chuyển tiếp — dù truy xuất đã tìm đúng tài liệu. Leo tầng ở lượt cuối giữ phần lớn lượt
+   * rồi chuyển tiếp — dù truy xuất đã tìm đúng tài liệu. Leo tầng từ lượt thử lại thứ hai giữ phần lớn lượt
    * gọi trên model rẻ, còn lượt đã hỏng nhiều lần thì được một model tuân lược đồ tốt hơn.
    * Để trống thì tắt hẳn việc leo tầng.
    */

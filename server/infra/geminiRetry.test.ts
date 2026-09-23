@@ -269,6 +269,35 @@ describe("leo tầng sang model dự phòng", () => {
     expect(timeoutOf(1)).toBeUndefined();
   });
 
+  /**
+   * Với ngân sách 5 của bộ đo, leo ở lượt cuối nghĩa là năm lượt văn xuôi liên tiếp trên model rẻ
+   * rồi mới tới model mạnh. Leo từ lượt thử lại thứ hai cắt phần chờ đó.
+   */
+  it("ngân sách 5: leo từ lượt thử lại thứ hai, không đợi tới lượt cuối", async () => {
+    process.env.GEMINI_MAX_RETRIES = "5";
+    vi.useFakeTimers();
+    try {
+      queue.push("Văn xuôi thứ nhất.", "Văn xuôi thứ hai.", ANSWER);
+      const pending = generateStructured<{ reply: string }>({ tier: "light", contents: "câu hỏi", schema: SCHEMA } as never);
+      await vi.runAllTimersAsync();
+      expect((await pending).data).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+      delete process.env.GEMINI_MAX_RETRIES;
+    }
+
+    expect(modelOf(1)).not.toBe(config.geminiModelFallback);
+    expect(modelOf(2)).toBe(config.geminiModelFallback);
+  });
+
+  it("một lượt văn xuôi đơn lẻ thì lượt thử lại thứ nhất vẫn ở model cũ", async () => {
+    queue.push("Văn xuôi một lần.", ANSWER);
+
+    await generateStructured<{ reply: string }>({ tier: "light", contents: "câu hỏi", schema: SCHEMA } as never);
+
+    expect(modelOf(1)).toBe(modelOf(0));
+  });
+
   it("lượt đầu đã ra JSON thì không bao giờ chạm tới model dự phòng", async () => {
     queue.push(ANSWER);
 

@@ -342,8 +342,20 @@ function wait(ms: number): Promise<void> {
 }
 
 /**
- * Model cho lượt thử thứ `attempt`: LEO LÊN model dự phòng ở lượt cuối, nếu các lượt trước đều
- * trả văn xuôi thay vì JSON.
+ * Lượt thử đầu tiên được phép chạy trên model dự phòng: lượt THỬ LẠI THỨ HAI (lượt đầu là 0).
+ *
+ * Bản đầu chỉ leo ở lượt CUỐI. Với ngân sách 5 của bộ đo, điều đó nghĩa là năm lượt văn xuôi
+ * liên tiếp trên model rẻ rồi mới tới model mạnh — mà mỗi lượt hỏng thêm 7–9 giây, đúng phần độ
+ * trễ đang phải cắt. Một lượt văn xuôi có thể là ngẫu nhiên, nên lượt thử lại đầu tiên vẫn ở model
+ * cũ; hai lượt liên tiếp thì đã là dấu hiệu model này không tuân lược đồ cho câu này.
+ *
+ * Ngân sách nhỏ hơn 2 thì leo ở lượt cuối như cũ, để việc hạ ngân sách không âm thầm tắt leo tầng.
+ */
+const FALLBACK_FROM_ATTEMPT = 2;
+
+/**
+ * Model cho lượt thử thứ `attempt`: LEO LÊN model dự phòng từ `FALLBACK_FROM_ATTEMPT`, nếu đã có
+ * lượt trả văn xuôi thay vì JSON.
  *
  * Chỉ leo khi lỗi là VĂN XUÔI, không leo khi lỗi là mạng hay quá tải. Văn xuôi nghĩa là model
  * hiện tại không tuân lược đồ, và gửi lại cho đúng model ấy thường ra đúng kiểu hỏng ấy — đo ngày
@@ -360,7 +372,8 @@ function modelForAttempt(
   proseFailures: number,
 ): { model: string; escalated: boolean } {
   const fallback = config.geminiModelFallback;
-  const escalated = attempt === budget && proseFailures > 0 && fallback !== "" && fallback !== base;
+  const from = Math.min(FALLBACK_FROM_ATTEMPT, budget);
+  const escalated = attempt >= from && proseFailures > 0 && fallback !== "" && fallback !== base;
   return { model: escalated ? fallback : base, escalated };
 }
 
@@ -422,7 +435,7 @@ export async function generateStructured<T>(call: StructuredCall): Promise<Struc
     const current = modelForAttempt(model, attempt, MAX_PARSE_RETRIES, proseFailures);
     usedModel = current.model;
     if (current.escalated) {
-      console.warn(`Gemini (${model}): ${proseFailures} lượt trả văn xuôi, lượt cuối chuyển sang ${current.model}.`);
+      console.warn(`Gemini (${model}): ${proseFailures} lượt trả văn xuôi, lượt thử lại ${attempt} chạy trên ${current.model}.`);
     }
 
     try {
@@ -631,7 +644,7 @@ export async function generateStructuredStream<T>(call: StreamingCall): Promise<
     const current = modelForAttempt(model, attempt, MAX_PARSE_RETRIES, proseFailures);
     usedModel = current.model;
     if (current.escalated) {
-      console.warn(`Gemini (${model}): ${proseFailures} lượt trả văn xuôi, lượt cuối chuyển sang ${current.model}.`);
+      console.warn(`Gemini (${model}): ${proseFailures} lượt trả văn xuôi, lượt thử lại ${attempt} chạy trên ${current.model}.`);
     }
 
     raw = "";
