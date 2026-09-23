@@ -53,3 +53,22 @@ describe("KE-23: cắt bớt khi chạy thử", () => {
     expect(new Set(picked).size).toBe(10);
   });
 });
+
+/**
+ * `.github/workflows/eval.yml` từng gọi eval không truyền `--limit`, nên lần chạy theo lịch chỉ
+ * đo 30 trên 67 kịch bản holdout rồi báo cáo như thể đã đủ.
+ */
+describe("--limit all", () => {
+  it("chạy trọn tập chứ không cắt còn 30", () => {
+    expect(parseOptions(["--limit", "all"]).limit).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it("vẫn từ chối giá trị rác", () => {
+    expect(() => parseOptions(["--limit", "nhiều"])).toThrow(/số nguyên dương/);
+    expect(() => parseOptions(["--limit", "0"])).toThrow(/số nguyên dương/);
+  });
+
+  it("`all` KHÔNG áp cho --k: k là số đoạn đưa vào ngữ cảnh, không có nghĩa lấy hết", () => {
+    expect(() => parseOptions(["--k", "all"])).toThrow(/số nguyên dương/);
+  });
+});

@@ -55,11 +55,12 @@ function score(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
 }
 
 const HELP = [
-  "npm run eval -- [--limit 30] [--ids GS-001,GS-002] [--split dev|holdout|all] [--k 5] [--out thư-mục-mới] [--skip-score]",
+  "npm run eval -- [--limit 30|all] [--ids GS-001,GS-002] [--split dev|holdout|all] [--k 5] [--out thư-mục-mới] [--skip-score]",
   "npm run eval -- --results eval/results/<mốc>   (offline: đọc lại dataset.jsonl + scores.json và áp cổng)",
   "",
   "Quy ước tập: vặn prompt và ngưỡng trên --split dev; --split holdout là con số báo cáo.",
   "--limit mặc định 30 nên KHÔNG chạy hết bộ vàng; lấy cách đều để vẫn chạm đủ các dạng kịch bản.",
+  "--limit all chạy trọn tập đã chọn — đây là thứ phải dùng cho con số đem báo cáo.",
   "Ngưỡng đặt qua biến môi trường (EVAL_MIN_*, EVAL_MAX_*); EVAL_GATE_OFF=<khoá,khoá> tắt hẳn một luật.",
   "EVAL_JUDGE_MODEL đặt model chấm khác model sinh; để trống thì hai bên trùng nhau và điểm bị thiên lệch tự chấm.",
 ].join("\n");
@@ -137,7 +138,7 @@ async function main(): Promise<number> {
   const selected = sample(matched, options.limit);
   if (!selected.length) throw new EvalError("Bộ lọc không chọn được kịch bản nào");
   if (selected.length < matched.length) {
-    console.warn(`Chỉ chạy ${selected.length}/${matched.length} kịch bản do --limit (mặc định 30, bỏ cờ đi vẫn là 30); con số ra KHÔNG dùng để báo cáo. Chạy đủ: --limit ${matched.length}.`);
+    console.warn(`Chỉ chạy ${selected.length}/${matched.length} kịch bản do --limit (mặc định 30, bỏ cờ đi vẫn là 30); con số ra KHÔNG dùng để báo cáo. Chạy đủ: --limit all.`);
   }
   if (!options.skipScore && !selected.some((row) => !row.out_of_scope && row.expected_docs.length > 0)) {
     throw new EvalError("Cần ít nhất một kịch bản có expected_docs để tính RAGAS; dùng --skip-score nếu chỉ kiểm phần tất định.");
