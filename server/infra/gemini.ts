@@ -9,20 +9,66 @@ import { chargeModelCall } from "@server/infra/aiBudget";
  * server.ts (nay là server/index.ts); giờ có bốn nơi cần dùng (NLU, năm tác tử, sinh lịch trình, embedder) nên tách ra
  * để không có bốn bản `new GoogleGenAI(...)` với bốn cách xử lý lỗi khác nhau.
  */
-let aiClient: GoogleGenAI | null = null;
+/**
+ * MỘT CLIENT CHO MỖI ĐIỂM CUỐI, DỰNG MỘT LẦN RỒI DÙNG LẠI.
+ *
+ * `GoogleGenAI` khoá `apiKey` và `baseUrl` ngay lúc khởi tạo, nên muốn đổi điểm cuối thì phải
+ * đổi client — không có đường nào truyền chúng theo từng lượt gọi.
+ */
+let clientPool: GoogleGenAI[] | null = null;
+
+/** Con trỏ luân phiên. Dùng chung cho mọi lượt gọi để tải rải đều, không dồn vào điểm cuối đầu. */
+let nextEndpoint = 0;
+
+function pool(): GoogleGenAI[] {
+  if (!clientPool) {
+    clientPool = config.geminiEndpoints.map(
+      ({ apiKey, baseUrl }) =>
+        new GoogleGenAI({
+          apiKey,
+          // `baseUrl` rỗng thì SDK giữ nguyên mặc định https://generativelanguage.googleapis.com.
+          // Xem readGeminiBaseUrl() trong config.ts về việc vì sao giá trị ở đây là origin, không
+          // kèm "/v1". `timeout` luôn đặt: xem config.geminiTimeoutMs về lượt treo 294 giây.
+          httpOptions: { timeout: config.geminiTimeoutMs, ...(baseUrl ? { baseUrl } : {}) },
+        }),
+    );
+  }
+  return clientPool;
+}
 
 export function getGeminiClient(): GoogleGenAI | null {
   if (!hasGeminiCredentials()) return null;
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({
-      apiKey: config.geminiApiKey,
-      // Chỉ truyền httpOptions khi có cấu hình: để trống thì SDK giữ nguyên mặc định
-      // https://generativelanguage.googleapis.com. Xem readGeminiBaseUrl() trong config.ts
-      // về việc vì sao giá trị ở đây là origin, không kèm "/v1".
-      ...(config.geminiBaseUrl ? { httpOptions: { baseUrl: config.geminiBaseUrl } } : {}),
-    });
-  }
-  return aiClient;
+  return pool()[nextEndpoint % pool().length];
+}
+
+/** Số điểm cuối đang có. Vòng lặp thử lại dùng nó để biết đã đi hết một vòng hay chưa. */
+export function endpointCount(): number {
+  return hasGeminiCredentials() ? pool().length : 0;
+}
+
+/**
+ * Nhận điểm cuối khởi đầu cho một lượt gọi, và nhích con trỏ chung sang chỗ kế tiếp.
+ *
+ * Lấy chỉ số ra MỘT LẦN rồi giữ trong biến cục bộ của lượt gọi, thay vì đọc con trỏ chung ở mỗi
+ * lần thử. Hai lượt gọi chạy song song — chuyện bình thường, vì một lượt hội thoại gọi model vài
+ * lần — sẽ nhích con trỏ xen kẽ nhau, và khi đó việc đọc lại con trỏ giữa chừng khiến các lần
+ * thử của cùng một lượt nhảy loạn xạ, có thể quay lại đúng điểm cuối vừa hỏng.
+ */
+function takeEndpointSlot(): number {
+  const slot = nextEndpoint;
+  nextEndpoint = (nextEndpoint + 1) % Math.max(pool().length, 1);
+  return slot;
+}
+
+function clientAt(index: number): GoogleGenAI {
+  const clients = pool();
+  return clients[index % clients.length];
+}
+
+/** Chỉ dùng trong test: xoá pool để lần gọi sau đọc lại cấu hình. */
+export function resetGeminiPool(): void {
+  clientPool = null;
+  nextEndpoint = 0;
 }
 
 /**
@@ -204,11 +250,91 @@ export class AiUnavailableError extends Error {
 const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);
 const TRANSIENT_BACKOFF_MS = 700;
 
+/**
+ * Hỏng ở tầng MẠNG, dưới cả HTTP: kết nối đứt giữa chừng, hết giờ chờ, DNS trả lời "lát nữa hỏi
+ * lại". Undici gói chúng thành `TypeError: fetch failed` — không có `status`, và câu chữ ấy không
+ * khớp mẫu nào ở trên — nên một lần TCP reset từng bị xếp là lỗi vĩnh viễn và ném thẳng, không
+ * thử lại lấy một lần. Ngày 2026-09-22 đúng một `read ECONNRESET` như vậy giết một lần chạy đánh
+ * giá 67 kịch bản ngay ở ca thứ ba; với khách thì nó là một câu hỏi mất trắng. Kết nối đứt lại là
+ * thứ đáng thử lại nhất trong mọi kiểu hỏng: lần gửi sau thường đi lọt.
+ *
+ * ENOTFOUND KHÔNG nằm ở đây. Tên miền sai thì thử lại bao nhiêu lần cũng sai, và đó là lỗi cấu
+ * hình cần hiện ra ngay thay vì bị hoãn sau mấy nhịp backoff.
+ */
+const TRANSIENT_NETWORK_CODES = new Set([
+  "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EPIPE", "EAI_AGAIN",
+  "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_SOCKET",
+]);
+
+/**
+ * Thử lại mấy lượt trước khi bỏ cuộc.
+ *
+ * Mặc định 2 vì một lượt chat có người đang ngồi chờ: quá ngần ấy thì thà báo lỗi còn hơn để
+ * khách nhìn khung trống thêm chục giây. Nhưng lần chạy đánh giá không có ai chờ, lại dài hàng
+ * trăm lượt gọi, và một nhịp quá tải hai giây ở bất kỳ lượt nào cũng vứt đi cả hai mươi phút đo
+ * — ngày 2026-09-22 nó giết bốn lần chạy liên tiếp. Nên ngân sách đọc được từ môi trường, và
+ * `eval/run-eval.ts` đặt cao hơn cho riêng nó.
+ *
+ * Đọc lại ở TỪNG lượt gọi chứ không chốt lúc nạp module: nơi gọi đặt biến sau khi module đã nạp
+ * thì giá trị chốt sẵn sẽ lặng lẽ bỏ qua thiết lập đó.
+ */
+function maxRetries(): number {
+  const raw = Number(process.env.GEMINI_MAX_RETRIES);
+  return Number.isInteger(raw) && raw >= 0 && raw <= 10 ? raw : 2;
+}
+
 function isTransientProviderError(error: unknown): boolean {
-  const status = (error as { status?: unknown } | null)?.status;
-  if (typeof status === "number") return TRANSIENT_STATUS.has(status);
+  const raw = error as { status?: unknown; code?: unknown; name?: unknown; cause?: { code?: unknown } } | null;
+
+  /**
+   * Hết hạn thời gian là lỗi TẠM THỜI, dù nó do chính ta gây ra.
+   *
+   * `GEMINI_TIMEOUT_MS` cắt một lượt gọi treo, và SDK ném ra `AbortError` — không có `status`, và
+   * câu chữ "This operation was aborted" không khớp mẫu nào bên dưới. Không nhận diện ở đây thì
+   * nó rơi vào nhánh vĩnh viễn, và với cấu hình MỘT điểm cuối thì một lượt treo sẽ không được thử
+   * lại lấy một lần — tức là bản vá timeout đổi một lượt chờ năm phút thành một lượt hỏng ngay,
+   * thay vì thành một lượt gửi lại và đi lọt.
+   */
+  if (raw?.name === "AbortError" || raw?.code === "ABORT_ERR") return true;
+
+  if (typeof raw?.status === "number") return TRANSIENT_STATUS.has(raw.status);
+
+  // Mã lỗi hệ thống nằm ở `cause` khi undici bọc lại thành `fetch failed`, và nằm ngay trên lỗi
+  // khi không bọc. Xem cả hai chỗ vì chỉ nhìn một chỗ là bỏ sót đúng nửa số trường hợp.
+  if ([raw?.code, raw?.cause?.code].some((code) => typeof code === "string" && TRANSIENT_NETWORK_CODES.has(code))) {
+    return true;
+  }
+
   // Proxy có thể gói lỗi lại và làm mất `status`; khi đó chỉ còn câu chữ để dựa vào.
   return /overload|unavailable|try again|quá tải/i.test(String((error as Error | null)?.message ?? ""));
+}
+
+/**
+ * Còn thử tiếp không, và vì lý do gì.
+ *
+ * Hai lý do rất khác nhau, nên giữ tách bạch thay vì gộp thành một cờ boolean:
+ *
+ * - `transient` — điểm cuối tự khai là lỗi nhất thời (429, 5xx, kết nối đứt). Gửi lại thì có cơ
+ *   hội đi lọt, kể cả khi chỉ có một điểm cuối.
+ * - `failover` — lỗi KHÔNG tạm thời, nhưng trong chuỗi vẫn còn điểm cuối chưa thử. Với một điểm
+ *   cuối duy nhất thì đây là chỗ phải dừng: thử lại một yêu cầu sai chỉ tốn thêm hạn mức để nhận
+ *   về đúng câu trả lời đó. Có nhiều điểm cuối thì ý nghĩa đổi hẳn — proxy đang dùng trả 400
+ *   "Yêu cầu không hợp lệ" cho chính request nó vừa chấp nhận, nên gửi request ấy sang một điểm
+ *   cuối khác chính là phép kiểm chứng: request sai THẬT sẽ hỏng ở mọi điểm cuối và lỗi vẫn nổi
+ *   lên như cũ, còn proxy nói dối thì lần sau đi lọt.
+ */
+type RetryReason = "transient" | "failover";
+
+function retryDecision(error: unknown, attempt: number, budget: number): RetryReason | null {
+  if (attempt >= budget) return null;
+  if (isTransientProviderError(error)) return "transient";
+  return attempt + 1 < endpointCount() ? "failover" : null;
+}
+
+function describeRetry(reason: RetryReason, error: unknown): string {
+  if (reason === "transient") return "điểm cuối trả lỗi tạm thời";
+  const status = (error as { status?: unknown } | null)?.status;
+  return `điểm cuối từ chối (${status ?? "không rõ mã"}), chuyển sang điểm cuối kế tiếp`;
 }
 
 function wait(ms: number): Promise<void> {
@@ -225,6 +351,8 @@ function wait(ms: number): Promise<void> {
 export async function generateStructured<T>(call: StructuredCall): Promise<StructuredResult<T>> {
   const ai = getGeminiClient();
   if (!ai) throw new AiUnavailableError();
+  // Một lần cho cả lượt gọi: hai lượt liên tiếp vì thế không cùng vào một điểm cuối.
+  const slot = takeEndpointSlot();
 
   const model = modelFor(call.tier);
   const startedAt = Date.now();
@@ -246,7 +374,11 @@ export async function generateStructured<T>(call: StructuredCall): Promise<Struc
    * mà vẫn hỏng thì có log ở mức cảnh báo, để lỗi hạ tầng không bị đọc nhầm thành "khách hỏi điều
    * ngoài phạm vi".
    */
-  const MAX_PARSE_RETRIES = 2;
+  /**
+   * Ngân sách phải đủ đi HẾT một vòng các điểm cuối, nếu không thì điểm cuối thứ ba trong chuỗi
+   * không bao giờ được thử tới và việc cấu hình nó ra thành vô nghĩa.
+   */
+  const MAX_PARSE_RETRIES = Math.max(maxRetries(), endpointCount() - 1);
   let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
   let data: T | null = null;
   let retries = 0;
@@ -263,7 +395,7 @@ export async function generateStructured<T>(call: StructuredCall): Promise<Struc
     await chargeModelCall();
 
     try {
-      response = await ai.models.generateContent({
+      response = await clientAt(slot + attempt).models.generateContent({
         model,
         contents: call.contents,
         config: {
@@ -274,9 +406,10 @@ export async function generateStructured<T>(call: StructuredCall): Promise<Struc
         },
       });
     } catch (error) {
-      if (attempt >= MAX_PARSE_RETRIES || !isTransientProviderError(error)) throw error;
+      const decision = retryDecision(error, attempt, MAX_PARSE_RETRIES);
+      if (!decision) throw error;
       console.warn(
-        `Gemini (${model}): điểm cuối trả lỗi tạm thời, thử lại ${attempt + 1}/${MAX_PARSE_RETRIES}.`,
+        `Gemini (${model}): ${describeRetry(decision, error)}, thử lại ${attempt + 1}/${MAX_PARSE_RETRIES}.`,
       );
       await wait(TRANSIENT_BACKOFF_MS * (attempt + 1));
       continue;
@@ -439,11 +572,13 @@ export interface StreamingCall extends StructuredCall {
 export async function generateStructuredStream<T>(call: StreamingCall): Promise<StructuredResult<T>> {
   const ai = getGeminiClient();
   if (!ai) throw new AiUnavailableError();
+  // Một lần cho cả lượt gọi: hai lượt liên tiếp vì thế không cùng vào một điểm cuối.
+  const slot = takeEndpointSlot();
 
   const model = modelFor(call.tier);
   const startedAt = Date.now();
 
-  const MAX_PARSE_RETRIES = 2;
+  const MAX_PARSE_RETRIES = Math.max(maxRetries(), endpointCount() - 1);
   let usage: { promptTokenCount?: number; candidatesTokenCount?: number } | undefined;
   let raw = "";
   let data: T | null = null;
@@ -469,7 +604,7 @@ export async function generateStructuredStream<T>(call: StreamingCall): Promise<
      * dán vào nhau.
      */
     try {
-      const stream = await ai.models.generateContentStream({
+      const stream = await clientAt(slot + attempt).models.generateContentStream({
         model,
         contents: call.contents,
         config: {
@@ -503,9 +638,10 @@ export async function generateStructuredStream<T>(call: StreamingCall): Promise<
         }
       }
     } catch (error) {
-      if (attempt >= MAX_PARSE_RETRIES || !isTransientProviderError(error)) throw error;
+      const decision = retryDecision(error, attempt, MAX_PARSE_RETRIES);
+      if (!decision) throw error;
       console.warn(
-        `Gemini (${model}) streaming: điểm cuối trả lỗi tạm thời, thử lại ${attempt + 1}/${MAX_PARSE_RETRIES}.`,
+        `Gemini (${model}) streaming: ${describeRetry(decision, error)}, thử lại ${attempt + 1}/${MAX_PARSE_RETRIES}.`,
       );
       await wait(TRANSIENT_BACKOFF_MS * (attempt + 1));
       continue;

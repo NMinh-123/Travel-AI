@@ -116,8 +116,8 @@ function readEmbedder(): EmbedderKind {
  * .../v1/v1beta/models/... và trả 404. Hàm này cắt bỏ hậu tố đó thay vì bắt người dùng nhớ, và
  * dừng server ngay khi giá trị không phải URL http(s) — cùng nguyên tắc đã áp cho PORT.
  */
-function readGeminiBaseUrl(): string {
-  const raw = process.env.GEMINI_BASE_URL?.trim();
+function readGeminiBaseUrl(raw: string | undefined): string {
+  raw = raw?.trim();
   if (!raw) return "";
 
   let parsed: URL;
@@ -134,6 +134,48 @@ function readGeminiBaseUrl(): string {
 
   const path = parsed.pathname.replace(/\/+$/, "").replace(/\/(v1|v1beta|v1beta1)$/, "");
   return `${parsed.origin}${path}`;
+}
+
+/** Tách một biến môi trường dạng danh sách ngăn bằng dấu phẩy, bỏ mục rỗng. */
+function readList(name: string): string[] {
+  return (process.env[name] ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+/**
+ * CHUỖI ĐIỂM CUỐI CHẠY LUÂN PHIÊN.
+ *
+ * `GEMINI_API_KEY` và `GEMINI_BASE_URL` nhận danh sách ngăn bằng dấu phẩy. Một giá trị thì mọi
+ * thứ chạy y như trước, nên cấu hình cũ không phải sửa gì.
+ *
+ * VÌ SAO CẦN NHIỀU ĐIỂM CUỐI. Đo ngày 2026-09-23 trên điểm cuối đang dùng: gửi ĐÚNG một câu hỏi
+ * năm lần liên tiếp thì hai lần trả lời được và ba lần hỏng, với mã 400 "Yêu cầu không hợp lệ"
+ * cho chính request mà lần trước nó đã nhận. Một mã 400 theo đúng nghĩa thì không đáng thử lại —
+ * nhưng khi có nhiều điểm cuối, gửi lại request ấy sang điểm cuối khác chính là phép kiểm chứng:
+ * request sai thật sẽ hỏng ở MỌI điểm cuối, còn proxy nói dối thì lần sau đi lọt.
+ *
+ * Số URL ít hơn số khoá thì URL cuối dùng chung cho phần còn lại — trường hợp thường gặp là
+ * nhiều khoá trên cùng một proxy. Nhiều URL hơn khoá là cấu hình sai và bị chặn ngay ở đây.
+ */
+function readGeminiEndpoints(): { apiKey: string; baseUrl: string }[] {
+  const keys = readList("GEMINI_API_KEY");
+  const urls = readList("GEMINI_BASE_URL").map((raw) => readGeminiBaseUrl(raw));
+
+  if (urls.length > keys.length) {
+    throw new Error(
+      `GEMINI_BASE_URL có ${urls.length} địa chỉ nhưng GEMINI_API_KEY chỉ có ${keys.length} khoá; ` +
+        "mỗi địa chỉ cần một khoá đi kèm.",
+    );
+  }
+
+  return keys.map((apiKey, index) => ({
+    apiKey,
+    // Ít URL hơn khoá: lấy URL cuối cùng cho phần còn lại. Không có URL nào thì để rỗng và SDK
+    // dùng điểm cuối chính thức của Google.
+    baseUrl: urls.length === 0 ? "" : (urls[index] ?? urls[urls.length - 1]),
+  }));
 }
 
 /**
@@ -280,8 +322,32 @@ export const config = {
    * đã xác nhận không còn vi phạm nào.
    */
   cspReportOnly: readBool("CSP_REPORT_ONLY", false),
-  geminiApiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
-  geminiBaseUrl: readGeminiBaseUrl(),
+  /**
+   * Danh sách điểm cuối chạy luân phiên. Xem `readGeminiEndpoints`.
+   *
+   * `geminiApiKey` và `geminiBaseUrl` giữ lại là điểm cuối ĐẦU TIÊN, cho những nơi chỉ xử lý
+   * được một giá trị — chủ yếu là biến môi trường truyền sang bộ chấm Python.
+   */
+  geminiEndpoints: readGeminiEndpoints(),
+  geminiApiKey: readList("GEMINI_API_KEY")[0] ?? "",
+  geminiBaseUrl: readGeminiEndpoints()[0]?.baseUrl ?? "",
+  /**
+   * Hạn thời gian cho MỘT lượt gọi model, mili giây.
+   *
+   * Trước đây không đặt gì cả, và đó là lý do một lượt chat treo 294 giây trong lượt chạy tay
+   * ngày 2026-09-23 — khách ngồi nhìn khung trống gần năm phút rồi mới nhận được lỗi. Có hạn thì
+   * một điểm cuối treo sẽ bị cắt và lượt gọi chuyển sang điểm cuối kế tiếp, nên chính con số này
+   * mới là thứ chặn đuôi p95, chứ không phải số lượng điểm cuối.
+   *
+   * Mặc định 30 giây, và con số này phải đọc CÙNG với số điểm cuối. Đo ngày 2026-09-23 với ba
+   * điểm cuối và hạn 60 giây: ba ca hỏng mất 145–182 giây mỗi ca, vì mỗi lần thử đều treo đủ 60
+   * giây rồi mới chuyển tiếp. Hạn càng rộng thì chuyển tiếp càng đắt — thời gian khách chờ là
+   * TÍCH của hạn và số lần thử, không phải một trong hai.
+   *
+   * 30 giây vẫn nằm trên mọi lượt gọi hợp lệ đo được (nhanh nhất ~1,7 giây, chậm nhất ~25 giây),
+   * nên nó cắt phần treo chứ không cắt nhầm câu trả lời đang sinh dở.
+   */
+  geminiTimeoutMs: readNumber("GEMINI_TIMEOUT_MS", 30_000, 1_000, 600_000),
   geminiModel: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash",
   /**
    * Tầng nhẹ theo SRS Mục 11.4.5: phân loại ý định, trích xuất thực thể, trả lời FAQ ngắn —
@@ -451,7 +517,7 @@ export const config = {
 };
 
 export function hasGeminiCredentials(): boolean {
-  return config.geminiApiKey.length > 0;
+  return config.geminiEndpoints.length > 0;
 }
 
 export function hasGoogleCredentials(): boolean {
