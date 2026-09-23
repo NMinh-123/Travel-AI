@@ -304,20 +304,40 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
   const amendsOngoingTask =
     input.previousIntent !== undefined && Object.keys(extractSlots(input.message)).length > 0;
 
-  // Trigger 1 và 3 của Mục 10.6: khách yêu cầu gặp người thật, hoặc ý định không đủ tin cậy.
+  /**
+   * Trigger 1, 2 và 3 của Mục 10.6. THỨ TỰ LÀ HỢP ĐỒNG: lý do tất định đứng trước lý do do model
+   * đoán ra.
+   *
+   * `USER_REQUEST` đứng đầu vì đó là khách tự nói. `OUT_OF_SCOPE` đứng thứ hai vì nó đến từ danh
+   * sách chặn tường minh, không từ model. `LOW_CONFIDENCE` đứng cuối vì nó chỉ là model tự nhận
+   * mình không chắc — và thường thì nó không chắc CHÍNH VÌ câu hỏi ngoài địa bàn. Bản trước đặt
+   * `LOW_CONFIDENCE` trước `OUT_OF_SCOPE`, nên GS-163 ("Chợ tình Sa Pa họp vào tối nào?", độ tin
+   * cậy 0,4) được chuyển tiếp với một lý do sai: nhân viên đọc bản ghi sẽ tưởng hệ thống không
+   * hiểu câu, trong khi nó hiểu đúng và chỉ là câu hỏi về Lào Cai.
+   */
   const forcedReason: EscalationReason | null = nlu.wantsHuman
     ? "USER_REQUEST"
-    : nlu.confidence < MIN_INTENT_CONFIDENCE && !amendsOngoingTask
-      ? "LOW_CONFIDENCE"
-      : offTopicPlace
-        ? "OUT_OF_SCOPE"
+    : offTopicPlace
+      ? "OUT_OF_SCOPE"
+      : nlu.confidence < MIN_INTENT_CONFIDENCE && !amendsOngoingTask
+        ? "LOW_CONFIDENCE"
         : null;
 
   /**
-   * Nhãn ý định của lượt này không đáng tin (đo được: lật giữa hai lần chạy cùng một câu), nên
-   * tiếp tục đúng việc đang làm thay vì nhảy sang việc khác vì một lần đoán.
+   * TIẾP TỤC VIỆC ĐANG LÀM khi lượt này chỉ sửa lại nó.
+   *
+   * Hai tình huống, cùng một lý do: nhãn ý định của một câu sửa ngắn không đáng tin.
+   *   - Độ tin cậy thấp (GS-186): nhãn lật qua lại giữa hai lần chạy cùng một câu.
+   *   - Nhãn `support` mà khách không xin gặp người (GS-189, "Bớt còn 4 người", độ tin cậy ≥ 0,5):
+   *     bản trước bỏ qua ca này vì chỉ xét độ tin cậy, nên lượt ấy rơi xuống nhánh "tra kho
+   *     trước" bên dưới, sang tác tử tri thức, không tìm được gì về "bớt người", rồi chuyển tiếp.
+   *
+   * KHÔNG ghi đè một nhãn tự tin khác `support`: "Đi ô tô chụp ảnh ở đâu đẹp?" sau một lượt lịch
+   * trình có slot nhưng là câu hỏi tri thức thật, và NLU nói đúng điều đó với độ tin cậy cao.
    */
-  if (amendsOngoingTask && nlu.confidence < MIN_INTENT_CONFIDENCE) {
+  const labelUntrusted =
+    nlu.confidence < MIN_INTENT_CONFIDENCE || (nlu.intent === "support" && !nlu.wantsHuman);
+  if (amendsOngoingTask && labelUntrusted) {
     agent = input.previousIntent as Intent;
   }
 

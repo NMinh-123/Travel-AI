@@ -185,6 +185,47 @@ describe("KE-14…KE-20: đường đi thật với phụ thuộc ra ngoài đư
     expect(out.trace.citedDocIds).toEqual([]);
   });
 
+  /**
+   * Lý do tất định đứng trước lý do do model đoán. GS-163 ("Chợ tình Sa Pa họp vào tối nào?", độ
+   * tin cậy 0,4) từng bị chuyển tiếp với LOW_CONFIDENCE — nhân viên đọc bản ghi sẽ tưởng hệ thống
+   * không hiểu câu, trong khi nó hiểu đúng và câu hỏi là về Lào Cai.
+   */
+  it("ngoài địa bàn và độ tin cậy thấp cùng lúc: lý do ghi là OUT_OF_SCOPE", async () => {
+    const deps = fixture({ confidence: 0.4 });
+    deps.resolvePlaceNames = vi.fn(async () => ({ slugs: [], unknown: [] }));
+
+    const out = await handleTurn({ ...input, message: "Chợ tình Sa Pa họp vào tối nào?" }, deps);
+
+    expect(out.trace.path[3]).toMatchObject({ outcome: "forced_escalation", reason: "OUT_OF_SCOPE" });
+  });
+
+  /**
+   * GS-189 ("Bớt còn 4 người"): nhãn `support` với độ tin cậy ≥ 0,5 nên quy tắc cũ — chỉ xét độ tin
+   * cậy — bỏ qua, và lượt ấy rơi sang nhánh tra kho, không tìm được gì về "bớt người", rồi bị
+   * chuyển tiếp.
+   */
+  it("nhãn support cho một lượt sửa việc đang làm dở: tiếp tục việc đó, không đi tra kho", async () => {
+    const deps = fixture({ intent: "support", confidence: 0.9 });
+
+    await handleTurn(
+      { ...input, message: "Bớt còn 4 người", previousIntent: "budget", slots: { days: 3, travelers: 5 } },
+      deps,
+    );
+
+    expect(deps.runAgent).toHaveBeenCalledWith("budget", expect.anything());
+  });
+
+  it("nhãn TỰ TIN khác support thì KHÔNG bị ghi đè bởi việc đang làm dở", async () => {
+    const deps = fixture({ intent: "knowledge", confidence: 0.9 });
+
+    await handleTurn(
+      { ...input, message: "Đi ô tô chụp ảnh ở đâu đẹp?", previousIntent: "itinerary", slots: { days: 3 } },
+      deps,
+    );
+
+    expect(deps.runAgent).toHaveBeenCalledWith("knowledge", expect.anything());
+  });
+
   it.each([
     { confidence: 0.2, wantsHuman: false, reason: "LOW_CONFIDENCE" },
     { confidence: 0.2, wantsHuman: true, reason: "USER_REQUEST" },
