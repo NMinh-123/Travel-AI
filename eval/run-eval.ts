@@ -91,6 +91,19 @@ interface TurnRow {
   prompt_tokens: number;
   output_tokens: number;
   retries: number;
+  /**
+   * Từng lượt gọi model trong lượt này, theo đúng thứ tự đã gọi.
+   *
+   * `retries` ở trên là TỔNG của cả lượt, và con số gộp đó không trả lời được câu hỏi duy nhất
+   * đáng hỏi khi nửa số lượt phải gọi lại: gọi lại ở ĐÂU. Lần chạy holdout ngày 2026-09-23 có
+   * 28/53 lượt `knowledge` và 11/16 lượt `support` phải gọi lại, nhưng mỗi lượt đều gồm một lần
+   * gọi NLU cộng một lần gọi tác tử, nên không tách được phần nào thuộc về ai — tức không biết
+   * nên đổi tầng model cho tác tử hay cho bộ phân loại.
+   *
+   * Thứ tự là hợp đồng: `calls[0]` luôn là NLU (xem `trace.calls` dựng ở orchestrator), phần còn
+   * lại thuộc về tác tử đã chạy.
+   */
+  calls: { model: string; ms: number; retries: number }[];
   retrieved_docs: string[];
   cited_docs: string[];
   reply: string;
@@ -431,6 +444,11 @@ async function runCase(row: GoldenCase, deps: RunDeps): Promise<TurnRow[]> {
       prompt_tokens: result.trace.calls.reduce((sum, call) => sum + (call.promptTokens ?? 0), 0),
       output_tokens: result.trace.calls.reduce((sum, call) => sum + (call.outputTokens ?? 0), 0),
       retries: result.trace.calls.reduce((sum, call) => sum + (call.retries ?? 0), 0),
+      calls: result.trace.calls.map((call) => ({
+        model: call.model,
+        ms: call.latencyMs,
+        retries: call.retries ?? 0,
+      })),
       // Chỉ chứng cứ tri thức mới vào Recall@k: khối thời tiết có sourceRef là khoá nhà cung cấp
       // chứ không phải một tài liệu trong bộ vàng, nên gộp nó vào sẽ kéo Precision@k xuống một
       // cách vô nghĩa.
