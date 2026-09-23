@@ -159,6 +159,41 @@ hàng loạt đường dẫn. Alias khai ở `tsconfig.json`; `vite.config.ts` k
 cho client — cố tình KHÔNG khai `@server`/`@data` để một import nhầm sang mã server hỏng ngay
 lúc build thay vì lọt vào bundle gửi ra trình duyệt.
 
+## Đưa lên production
+
+`npm run build` xanh KHÔNG có nghĩa mang nguyên `.env` phát triển lên là chạy được. Server dừng
+ngay lúc khởi động nếu cấu hình chưa đạt, và đó là cố ý — một lỗi cấu hình phải lộ ra trước khi
+có khách, chứ không phải lúc có người khác đăng nhập được vào database.
+
+Những thứ PHẢI đổi so với `.env` phát triển:
+
+| Biến | Vì sao |
+| --- | --- |
+| `DATABASE_URL` | Mật khẩu mẫu `travel:travel` nằm trong `docker-compose.yml`, tức nằm trong repo, nên không còn là bí mật. Server từ chối khởi động nếu thấy nó. Database ở máy khác thì khai thêm `sslmode`, nếu không mật khẩu và dữ liệu đi qua mạng ở dạng rõ |
+| `JWT_SECRET` | Tối thiểu 32 ký tự. Sinh bằng `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
+| `GEMINI_API_KEY` | Thiếu thì `/api/chat` và `/api/plan-itinerary` trả 503. Nhận danh sách ngăn dấu phẩy để chạy luân phiên nhiều điểm cuối |
+| `ALLOWED_ORIGINS` | Danh sách origin được phép gọi API |
+| `TRUST_PROXY` | Đặt khi đứng sau reverse proxy, nếu không thì hạn mức theo IP đếm nhầm mọi khách thành một |
+
+Ba việc phải chạy trên database production trước khi mở cho khách, theo đúng thứ tự:
+
+```bash
+npm run db:migrate:deploy   # tạo lược đồ, gồm cả extension vector và unaccent
+npm run db:seed             # nạp nội dung từ data/
+npm run db:ingest           # chunk + nhúng kho tri thức cho RAG
+```
+
+`db:ingest` cần **sidecar embedding đang chạy** (`services/embedding`, cổng 8000) khi
+`EMBEDDER=bge-m3`. Sidecar nạp model lúc có request đầu tiên: lượt embed đầu mất khoảng 12 giây,
+các lượt sau khoảng 70 ms. Nếu có yêu cầu độ trễ ngay từ request đầu thì phải hâm nóng trước khi
+nhận traffic — `/health` của sidecar trả 200 cả khi model chưa nạp xong.
+
+`/api/health` trả 200 khi database còn sống và **503 kèm `status: "degraded"`** khi mất kết nối,
+nên dùng thẳng được làm readiness probe.
+
+Trước mỗi lần phát hành, xem [docs/TESTING.md](docs/TESTING.md) cho các tầng test và
+`npm run eval -- --split holdout --limit all` cho cổng chất lượng.
+
 ## Lệnh thường dùng
 
 | Lệnh                    | Việc                                                     |
