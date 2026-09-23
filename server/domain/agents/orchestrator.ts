@@ -184,9 +184,27 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
    * Chỉ mang khi lượt này KHÔNG tự nêu nơi nào. Khách vừa nhắc tên mới thì tên mới thắng, kể cả
    * khi câu vẫn còn một đại từ ở chỗ khác.
    */
+  /**
+   * Điều kiện là "CÂU CHỮ không nêu nơi nào", không phải "không phân giải được nơi nào".
+   *
+   * Bản trước hỏi `placeSlugs.length === 0`. Nhưng `placeSlugs` gộp cả `resolved.slugs` — thứ lấy
+   * từ `nlu.entities.destinations`, mà NLU thì tự mang địa danh của lượt trước sang. Nên với câu
+   * "Ở đó ăn sáng thì nên ăn gì?" sau khi khách vừa hỏi về phố cổ Đồng Văn, NLU trả về
+   * `destinations: ["Phố cổ Đồng Văn"]`, `placeSlugs` không rỗng, và nhánh mang địa danh KHÔNG
+   * chạy — trong khi câu chữ đưa đi nhúng vẫn còn nguyên chữ "Ở đó" và không có tên nơi nào.
+   *
+   * Hậu quả đo được trên GS-201: truy xuất trả về Cổng Trời Quản Bạ, quần áo theo mùa và điểm
+   * ngắm Bản Phùng — không đoạn nào về Đồng Văn, không đoạn nào về ăn uống. Ghép tên nơi vào thì
+   * ra 5 đoạn, trong đó có đúng `food:food-banh-cuon-dong-van`. Guardrail chặn lượt đó là đúng;
+   * thứ sai nằm ở truy vấn đưa cho nó.
+   *
+   * `scanned` là kết quả quét CHÍNH câu khách gõ, nên nó trả lời đúng câu hỏi cần hỏi. Nguồn địa
+   * danh để ghép lấy từ `nlu.entities.destinations` trước, rồi mới tới slot đã gom qua các lượt.
+   */
+  const namedInText = scanned.length > 0;
   const rewrite = rewriteQuery({
     message: normalized.query,
-    carriedPlaces: placeSlugs.length === 0 ? slots.destinations ?? [] : [],
+    carriedPlaces: namedInText ? [] : nlu.entities.destinations ?? slots.destinations ?? [],
   });
   if (rewrite.resolvedPlaces.length > 0) {
     const carried = await deps.resolvePlaceNames(rewrite.resolvedPlaces);

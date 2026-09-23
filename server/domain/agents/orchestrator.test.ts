@@ -90,6 +90,36 @@ describe("KE-14…KE-20: đường đi thật với phụ thuộc ra ngoài đư
     expect(out.trace.escalated).toBe(true);
   });
 
+  /**
+   * GS-201: khách hỏi về phố cổ Đồng Văn rồi hỏi tiếp "Ở đó ăn sáng thì nên ăn gì?". NLU mang địa
+   * danh của lượt trước sang `entities`, nên điều kiện cũ `placeSlugs.length === 0` không còn
+   * đúng và đại từ KHÔNG được thay — câu đưa đi nhúng vẫn là "Ở đó ...", không có tên nơi nào.
+   * Đo được: truy xuất khi đó trả về Cổng Trời Quản Bạ và quần áo theo mùa; ghép tên nơi vào thì
+   * ra đúng tài liệu bánh cuốn Đồng Văn.
+   */
+  it("đại từ được thay bằng tên nơi, kể cả khi NLU đã mang địa danh sang từ lượt trước", async () => {
+    const deps = fixture({ entities: { destinations: ["Phố cổ Đồng Văn"] } });
+    deps.resolvePlaceNames = vi.fn(async () => ({ slugs: ["pho-co-dong-van"], unknown: [] }));
+    // Câu chữ KHÔNG nêu nơi nào — chỉ có đại từ.
+    deps.findPlacesInText = vi.fn(async () => []);
+
+    await handleTurn({ ...input, message: "Ở đó ăn sáng thì nên ăn gì?" }, deps);
+
+    const context = (deps.runAgent as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(context.retrievalQuery).toContain("Phố cổ Đồng Văn");
+  });
+
+  it("câu tự nêu tên nơi thì KHÔNG ghép thêm, tên mới thắng", async () => {
+    const deps = fixture({ entities: { destinations: ["Mèo Vạc"] } });
+    deps.resolvePlaceNames = vi.fn(async () => ({ slugs: ["meo-vac"], unknown: [] }));
+    deps.findPlacesInText = vi.fn(async () => ["meo-vac"]);
+
+    await handleTurn({ ...input, message: "Mèo Vạc ăn sáng thì nên ăn gì?" }, deps);
+
+    const context = (deps.runAgent as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(context.retrievalQuery).toBe("Mèo Vạc ăn sáng thì nên ăn gì?");
+  });
+
   it.each([
     { confidence: 0.2, wantsHuman: false, reason: "LOW_CONFIDENCE" },
     { confidence: 0.2, wantsHuman: true, reason: "USER_REQUEST" },
