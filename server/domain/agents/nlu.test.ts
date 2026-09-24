@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asksForHuman, resolveWantsHuman } from "./nlu";
+import { asksForHuman } from "./nlu";
 
 /**
  * `wantsHuman` của model sai theo CẢ HAI chiều trên bộ holdout ngày 2026-09-23: bỏ sót lời đòi gặp
@@ -12,6 +12,9 @@ describe("asksForHuman: đọc tất định lời đòi gặp người", () => 
     "Đoàn tôi đang mắc kẹt vì sạt lở, cần hỗ trợ khẩn cấp.",
     "Cho mình gặp nhân viên",
     "cứu với, xe tụt dốc",
+    "Tôi muốn gặp người phụ trách, chatbot không giải quyết được việc của tôi.",
+    "Tôi đã chuyển tiền cọc mà cơ sở nói không có đặt chỗ nào, tôi cần người xử lý ngay.",
+    "thuê người lái mà xe hỏng giữa đèo, cứu với",
   ])("bắt: %s", (message) => {
     expect(asksForHuman(message)).toBe(true);
   });
@@ -25,28 +28,11 @@ describe("asksForHuman: đọc tất định lời đòi gặp người", () => 
     "À cho mình thuê người lái thôi",
     "Nhân viên homestay có nói tiếng Anh không?",
     "Phố cổ Đồng Văn có gì?",
+    "Tiền hoàn có thể chuyển sang tài khoản khác được không?",
+    "Ninh Bình nên thuê thuyền ở bến nào?",
+    "Giải giúp tôi phương trình x bình phương trừ năm x cộng sáu bằng không.",
+    "tôi muốn khiếu nại",
   ])("KHÔNG bắt: %s", (message) => {
     expect(asksForHuman(message)).toBe(false);
-  });
-});
-
-describe("resolveWantsHuman: mã được bật tự do, chỉ được tắt trong một ca hẹp", () => {
-  it("đọc ra lời đòi gặp người thì bật, kể cả khi model nói không", () => {
-    expect(resolveWantsHuman(false, "Cho tôi nói chuyện với nhân viên tư vấn thật.", {})).toBe(true);
-  });
-
-  it("câu thuê tài xế mà model bật nhầm thì tắt — đúng quy tắc lược đồ đã ghi", () => {
-    expect(resolveWantsHuman(true, "À cho mình thuê người lái thôi", { travelMode: "easy_rider" })).toBe(false);
-  });
-
-  it("thuê tài xế KÈM xin cứu giúp thì vẫn bật: không bao giờ bỏ rơi người đang cần giúp", () => {
-    expect(
-      resolveWantsHuman(true, "thuê người lái mà xe hỏng giữa đèo, cứu với", { travelMode: "easy_rider" }),
-    ).toBe(true);
-  });
-
-  it("không có tín hiệu tất định nào thì giữ nguyên phán đoán của model", () => {
-    expect(resolveWantsHuman(true, "tôi muốn khiếu nại", {})).toBe(true);
-    expect(resolveWantsHuman(false, "Đồng Văn có gì?", {})).toBe(false);
   });
 });

@@ -114,7 +114,7 @@ export interface NluOutcome {
 }
 
 /**
- * KHÁCH ĐÒI GẶP NGƯỜI — đọc tất định, kết hợp với `wantsHuman` của model.
+ * KHÁCH ĐÒI GẶP NGƯỜI — đọc tất định, thay cho `wantsHuman` của model.
  *
  * Model bật trường này sai theo CẢ HAI chiều, đo ngày 2026-09-23 trên bộ holdout:
  *   - Bỏ sót: "Cho tôi nói chuyện với nhân viên tư vấn thật." (GS-171) và "Đoàn tôi đang mắc kẹt
@@ -127,7 +127,8 @@ export interface NluOutcome {
 const HUMAN_REQUEST = new RegExp(
   [
     String.raw`(noi|tro)\s*chuyen\s*(voi|cung)\s*(nhan\s*vien|nguoi\s*that|tu\s*van\s*vien|admin)`,
-    String.raw`gap\s*(nhan\s*vien|nguoi\s*that|tu\s*van\s*vien|quan\s*ly)`,
+    String.raw`gap\s*(nhan\s*vien|nguoi\s*(that|phu\s*trach)|tu\s*van\s*vien|quan\s*ly)`,
+    String.raw`can\s*(co\s*)?nguoi\s*(xu\s*ly|giai\s*quyet)`,
     String.raw`(nhan\s*vien|tu\s*van\s*vien)\s*(tu\s*van\s*)?(that|con\s*nguoi)`,
     String.raw`(can|xin)\s*(ho\s*tro|giup\s*do?|cuu)\s*(khan\s*cap|gap)`,
     String.raw`mac\s*ket`,
@@ -137,27 +138,6 @@ const HUMAN_REQUEST = new RegExp(
 
 export function asksForHuman(message: string): boolean {
   return HUMAN_REQUEST.test(normalizePlaceName(message));
-}
-
-/**
- * Gộp phán đoán của model với phép đọc tất định.
- *
- * NGUYÊN TẮC: mã được BẬT tự do, nhưng chỉ được TẮT trong đúng một trường hợp hẹp. Khách đòi gặp
- * người thì phải được gặp — trigger 1 của SRS Mục 10.6 — nên bật thừa chỉ tốn một lượt chuyển
- * tiếp, còn tắt nhầm là bỏ rơi một người đang cần giúp.
- *
- * Trường hợp được tắt: câu thuê một người làm dịch vụ — `extractSlots` đã đọc ra
- * `travelMode: easy_rider` — VÀ không có cụm nào đòi gặp nhân viên hay xin cứu giúp. Tắt ở đây
- * không phải là đoán thay khách; đó là thực thi đúng quy tắc mà chính lược đồ đã ghi, khi model
- * không tự tuân theo. Câu "thuê người lái mà xe hỏng giữa đèo, cứu với" vẫn giữ `true`.
- *
- * Nhóm khẩn cấp chỉ bắt lời XIN GIÚP, không bắt câu HỎI THÔNG TIN an toàn ("gọi số nào"): câu hỏi
- * thông tin đáng được trả lời bằng chính con số.
- */
-export function resolveWantsHuman(modelSaysHuman: boolean, message: string, entities: Slots): boolean {
-  if (asksForHuman(message)) return true;
-  if (modelSaysHuman && entities.travelMode === "easy_rider") return false;
-  return modelSaysHuman;
 }
 
 export async function classify(
@@ -261,7 +241,16 @@ export async function classify(
   return {
     result: {
       intent, confidence, entities, temporalPhrases,
-      wantsHuman: resolveWantsHuman(data.wantsHuman === true, message, entities),
+      /**
+       * CHỈ phép đọc tất định quyết định, `wantsHuman` của model bị bỏ qua.
+       *
+       * Trước đây model được bật cờ tự do vì bật thừa chỉ tốn một lượt chuyển cho nhân viên. Nay
+       * chưa có CSKH, bật thừa nghĩa là khách mất câu trả lời: holdout ngày 2026-09-24 có bốn câu
+       * model bật nhầm (GS-116 "rơi xuống vực thì gọi số nào", GS-143 hoàn tiền, GS-168 Ninh Bình,
+       * GS-177 phương trình) và cả bốn bị chặn với lý do USER_REQUEST. Model vẫn điền trường này
+       * trong lược đồ vì mô tả của nó giúp phân loại ý định `support`.
+       */
+      wantsHuman: asksForHuman(message),
     },
     metrics,
   };
