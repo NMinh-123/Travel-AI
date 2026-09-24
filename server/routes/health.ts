@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { config, hasGeminiCredentials, hasGoogleCredentials, hasMapsEmbedKey } from "@server/config";
+import { config, hasGeminiCredentials, hasGoogleCredentials, hasMapsEmbedKey, hasTurnstile } from "@server/config";
 import { isDatabaseReachable } from "@server/infra/db";
 import { asyncRoute } from "@server/middleware/asyncHandler";
 
@@ -63,5 +63,7 @@ healthRouter.get("/config", (_req: Request, res: Response) => {
      * phải ở lại phía máy chủ. Xem chú thích ở server/config.ts.
      */
     googleMapsEmbedKey: hasMapsEmbedKey() ? config.googleMapsEmbedKey : null,
+    /** Site key của Turnstile vốn công khai; null thì form đăng nhập không hiện widget. */
+    turnstileSiteKey: hasTurnstile() ? config.turnstileSiteKey : null,
   });
 });

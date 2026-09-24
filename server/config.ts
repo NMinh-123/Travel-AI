@@ -432,6 +432,14 @@ export const config = {
   googleMapsEmbedKey: process.env.GOOGLE_MAPS_EMBED_KEY?.trim() ?? "",
 
   /**
+   * Cloudflare Turnstile chặn bot ở form đăng nhập và đăng ký. Site key công khai (gửi xuống
+   * trình duyệt qua /api/config), secret key thì không bao giờ rời máy chủ. Chỉ bật khi có ĐỦ
+   * cả hai — xem `hasTurnstile()`.
+   */
+  turnstileSiteKey: process.env.TURNSTILE_SITE_KEY?.trim() ?? "",
+  turnstileSecretKey: process.env.TURNSTILE_SECRET_KEY?.trim() ?? "",
+
+  /**
    * Tầng RAG. Cả năm biến dưới đây đều KHÔNG bắt buộc, khác với DATABASE_URL và JWT_SECRET:
    * thiếu sidecar thì đặt EMBEDDER=gemini là chạy được, thiếu cả API key thì /api/chat trả 503
    * như trước. Không có đường nào dựng nội dung giả để che lỗi cấu hình.
@@ -585,6 +593,15 @@ export function hasGoogleCredentials(): boolean {
  */
 export function hasMapsEmbedKey(): boolean {
   return config.googleMapsEmbedKey.length > 0;
+}
+
+/**
+ * Turnstile bật khi và chỉ khi có cả hai khoá. Chỉ có secret thì server đòi token mà trang không
+ * hiện widget để lấy token — mọi lần đăng nhập đều hỏng; chỉ có site key thì trang hiện widget mà
+ * server không kiểm gì. Cả hai đều tệ hơn tắt hẳn.
+ */
+export function hasTurnstile(): boolean {
+  return config.turnstileSiteKey.length > 0 && config.turnstileSecretKey.length > 0;
 }
 
 /**

@@ -26,6 +26,12 @@ const GSI_FRAME = "https://accounts.google.com/gsi/";
 const GSI_CONNECT = "https://accounts.google.com/gsi/";
 const GSI_STYLE = "https://accounts.google.com/gsi/style";
 
+/**
+ * Cloudflare Turnstile (form đăng nhập/đăng ký): script tải từ đây và widget chạy trong một iframe
+ * cũng ở đây — đúng hai directive tài liệu CSP của Cloudflare yêu cầu.
+ */
+const TURNSTILE = "https://challenges.cloudflare.com";
+
 /** Bản đồ nhúng: client/components/PlaceMap.tsx đặt src tới .../maps/embed/v1/place. */
 const MAPS_EMBED = "https://www.google.com/maps/embed/";
 
@@ -49,7 +55,7 @@ function buildCsp(): string {
     "frame-ancestors": ["'none'"],
     "form-action": ["'self'"],
 
-    "script-src": ["'self'", GSI_SCRIPT],
+    "script-src": ["'self'", GSI_SCRIPT, TURNSTILE],
 
     /**
      * `'unsafe-inline'` cho STYLE, không phải cho script — hai thứ khác nhau về mức độ.
@@ -74,7 +80,7 @@ function buildCsp(): string {
      */
     "img-src": ["'self'", "data:", "blob:", "https:"],
 
-    "frame-src": [MAPS_EMBED, GSI_FRAME],
+    "frame-src": [MAPS_EMBED, GSI_FRAME, TURNSTILE],
     "connect-src": ["'self'", GSI_CONNECT],
   };
 
