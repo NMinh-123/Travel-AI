@@ -1,0 +1,38 @@
+# Production: web + sidecar embedding. Database nằm ngoài (Supabase), không có ở đây.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Biến môi trường lấy từ tệp ENV_FILE (mặc định .env), chmod 600, không đưa vào git. Các giá trị
+# ghi ở `environment:` bên dưới là phần CỐ ĐỊNH của cách triển khai này và thắng giá trị trong tệp.
+services:
+  web:
+    image: ${WEB_IMAGE:-travel-ai-web:local}
+    build: .
+    restart: unless-stopped
+    env_file: ${ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      EMBEDDER: bge-m3
+      EMBEDDING_SERVICE_URL: http://embedding:8000
+      # Sidecar là một container riêng; tiến trình Node không tự bật Python nữa.
+      EMBEDDING_AUTOSTART: "false"
+      # Rerank tắt ở giai đoạn thử trên Oracle Free: 20 đoạn mất 5,8 s trên máy dev 20 luồng, trên
+      # 2 OCPU ARM sẽ chậm hơn nhiều.
+      RERANK_ENABLED: "false"
+    # Chỉ mở ra localhost: reverse proxy (Caddy/nginx) trên cùng máy nhận 443 rồi chuyển vào đây.
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    depends_on:
+      embedding:
+        condition: service_healthy
+
+  embedding:
+    image: ${EMBEDDING_IMAGE:-travel-ai-embedding:local}
+    build: ./services/embedding
+    restart: unless-stopped
+    # KHÔNG có `ports:`. Sidecar không có xác thực, nên chỉ `web` gọi được nó qua mạng nội bộ.
+    volumes:
+      - hf-models:/models
+
+volumes:
+  hf-models:
