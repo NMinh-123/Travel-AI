@@ -137,20 +137,36 @@ trả OK, chatbot trả lời được một câu có dùng RAG.
 
 ## Bước 3: Database trên Supabase
 
-- [ ] Tạo project ở vùng Singapore và đặt mật khẩu DB mạnh. Giai đoạn thử dùng gói **Free**:
-      không có backup hằng ngày như Pro, và project tự tạm dừng khi không có hoạt động 7 ngày. Kiểm
-      lại hạn mức Free hiện tại trên trang giá của Supabase trước khi tạo.
-- [ ] Bật extension `vector`. Migration `20260906000000_chat_and_knowledge` cũng tự tạo extension
-      này, nhưng cần kiểm quyền.
-- [ ] Prisma: app kết nối qua pooler. `prisma migrate deploy` phải đi qua **kết nối trực tiếp hoặc
-      session pooler**, vì transaction pooler ở cổng 6543 không chạy được migrate. Sửa
-      `prisma.config.ts` hoặc schema để có `directUrl`. Nếu dùng transaction pooler, thêm
-      `?pgbouncer=true`.
-- [ ] Chạy `npm run db:migrate:deploy`, `db:seed`, `db:ingest`, rồi `db:audit`. Số bản ghi phải
+- [ ] **(Người dùng)** Tạo project trên https://supabase.com/dashboard: gói **Free**, Region
+      **Southeast Asia (Singapore)**, mật khẩu DB mạnh (nút Generate). Gói Free không có backup
+      hằng ngày, và project tự tạm dừng khi không có hoạt động 7 ngày.
+- [ ] **(Người dùng)** Lấy chuỗi kết nối: nút **Connect** → **Session pooler** (cổng 5432 trên host
+      `aws-...-ap-southeast-1.pooler.supabase.com`), thay `[YOUR-PASSWORD]` bằng mật khẩu, thêm
+      `?sslmode=require` vào cuối, rồi ghi vào tệp `.env.supabase` ở gốc repo dưới dạng
+      `DATABASE_URL=...`. Tệp này bị `.env*` trong `.gitignore` chặn nên không lọt vào git.
+      **Không dán mật khẩu vào chat.**
+- [x] Không bật extension `vector` trên dashboard: migration `20260906000000_chat_and_knowledge` tự
+      chạy `CREATE EXTENSION IF NOT EXISTS` cho `vector` và `unaccent`, cả hai đều nằm trong danh
+      sách Supabase cho phép. Migration không có lệnh nào cần superuser.
+- [x] Chọn kiểu kết nối: dùng **Session pooler cho cả app lẫn migrate**, không sửa schema để thêm
+      `directUrl`.
+  - Kết nối trực tiếp `db.<ref>.supabase.co` chỉ có IPv6 (trừ khi mua add-on IPv4), mà runner
+    của GitHub Actions không có IPv6, nên migrate từ CI ở Bước 6 không đi được đường đó.
+  - Transaction pooler (cổng 6543) không chạy được `prisma migrate` và buộc thêm
+    `?pgbouncer=true`. Session pooler thì chạy được cả hai, và server chạy lâu dài nên không cần
+    kiểu kết nối ngắn hạn của transaction pooler.
+  - Prisma mở mặc định `số CPU × 2 + 1` kết nối, tức 5 trên máy 2 OCPU, nằm trong giới hạn của
+    session pooler gói Free.
+- [ ] Từ máy dev, trỏ `DATABASE_URL` vào Supabase rồi chạy `npm run db:migrate:deploy`,
+      `db:seed`, `db:ingest` (dùng sidecar embedding trên máy dev), rồi `db:audit`. Số bản ghi phải
       **đếm lại từ `data/website`**, không lấy từ trí nhớ.
-- [ ] Kiểm backup hằng ngày và **thử khôi phục một lần** sang một project tạm. Gói Free không có
-      backup tự động: thay bằng `pg_dump` chạy theo lịch trên VPS, giữ vài bản gần nhất, và thử
-      khôi phục một lần.
+- [x] Script backup `scripts/backup-db.sh`: `pg_dump` trong container `postgres:17-alpine`, chỉ
+      schema `public` kèm extension `vector` và `unaccent`, giữ `KEEP` bản gần nhất. Đã thử trên DB
+      dev: xoay vòng giữ đúng số bản; khôi phục vào database trống và đè lên database có sẵn đều
+      ra đủ 167 đoạn / 167 vector / 26 điểm đến / 13 migration. Lần thử đầu (thiếu `--extension`)
+      hỏng ở bảng KnowledgeDoc, nên cờ đó là bắt buộc.
+- [ ] Chạy `scripts/backup-db.sh` vào Supabase, khôi phục bản dump vào một database tạm trên máy
+      dev để kiểm (không cần project thứ hai), rồi đặt cron trên VPS ở Bước 4.
 
 **Xong khi:** app chạy trên máy trỏ vào Supabase trả lời chatbot đúng, `db:audit` sạch, đã khôi
 phục thử thành công.
