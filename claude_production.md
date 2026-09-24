@@ -96,32 +96,41 @@ Supabase Pro 25 USD.
 
 ## Bước 1: Dọn nhánh và làm CI xanh
 
-- [ ] Nhánh `sua-loi-model-schema-va-bo-test`: commit hoặc bỏ các tệp đang sửa. Xoá hoặc thêm vào
+- [x] Nhánh `sua-loi-model-schema-va-bo-test`: commit hoặc bỏ các tệp đang sửa. Xoá hoặc thêm vào
       `.gitignore` các tệp ghi chú tạm (`erorr.md`, `result_test*.md`).
-- [ ] Merge vào `main`.
-- [ ] CI trên `main` xanh: `lint`, `test`, `build`, `test:smoke`, integration.
+- [x] Merge vào `main`.
+- [x] CI trên `main` xanh: `lint`, `test`, `build`, `test:smoke`, integration.
 
 **Xong khi:** `git status` sạch trên `main` và run CI mới nhất của `main` xanh.
 
 ## Bước 2: Đóng gói bằng Docker
 
-- [ ] `Dockerfile` cho web: build nhiều tầng. Tầng build chạy `npm ci && npm run build`; tầng chạy
-      chỉ `npm ci --omit=dev`, copy `dist/` và `prisma/`, lệnh chạy là `node dist/server.cjs`.
-      Chạy bằng user không phải root.
-- [ ] `services/embedding/Dockerfile`: torch bản CPU (index `https://download.pytorch.org/whl/cpu`).
-      Model tải sẵn vào image hoặc vào volume cache `HF_HOME`. Healthcheck gọi `/ready`.
-- [ ] `docker-compose.prod.yml`: gồm `web` và `embedding`. `embedding` **không có `ports:`**, chỉ
-      nằm trên mạng nội bộ. `web` nhận `EMBEDDING_SERVICE_URL=http://embedding:8000` và
-      `EMBEDDING_AUTOSTART=false`. Service embedding phải bind `0.0.0.0` **bên trong container**
-      (uvicorn mặc định bind 127.0.0.1, nên đặt `--host 0.0.0.0` trong `CMD`).
-- [ ] `.dockerignore`: `node_modules`, `eval/.venv`, `dist`, `.env`, `playwright-report`,
-      `test-results`.
-- [ ] **ARM (Oracle Free):** build image cho cả `linux/amd64` và `linux/arm64`
-      (`docker buildx build --platform linux/amd64,linux/arm64`). Thêm vào `generator client` trong
-      `db/schema.prisma`: `binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]` (hiện chưa có).
-      torch bản CPU có sẵn wheel aarch64. Kiểm image ARM chạy được trước khi lên Oracle.
-- [ ] Trong compose production đặt `RERANK_ENABLED=false`.
-- [ ] Chạy thử toàn bộ bằng compose trên máy, trỏ `DATABASE_URL` vào DB dev.
+- [x] `Dockerfile` cho web: build nhiều tầng. Tầng build chạy trên kiến trúc của máy build
+      (`$BUILDPLATFORM`): `npm ci --ignore-scripts`, `prisma generate`, `build:client`, `build:server`.
+      Tầng chạy: `npm ci --omit=dev --ignore-scripts` (postinstall gọi Prisma CLI, mà CLI là
+      devDependency), chép `node_modules/.prisma` và `dist/` từ tầng build, chạy bằng user `node`.
+      Healthcheck gọi `/api/health` (trả 503 khi mất database) thay cho một endpoint `/ready` mới.
+- [x] `services/embedding/Dockerfile`: Python 3.11 (khớp venv dev), torch bản CPU cài trước từ
+      index `https://download.pytorch.org/whl/cpu`. Model KHÔNG gói vào image mà tải lần đầu vào
+      volume `hf-models` gắn ở `HF_HOME`. Healthcheck gọi `/ready`. Chạy bằng user không phải root.
+- [x] `docker-compose.prod.yml`: gồm `web` và `embedding`. `embedding` **không có `ports:`**.
+      `web` chỉ mở `127.0.0.1:${WEB_PORT:-3000}` cho reverse proxy trên cùng máy, nhận biến từ
+      `${ENV_FILE:-.env}`. Các giá trị cố định (`NODE_ENV`, `EMBEDDER=bge-m3`,
+      `EMBEDDING_SERVICE_URL=http://embedding:8000`, `EMBEDDING_AUTOSTART=false`,
+      `RERANK_ENABLED=false`) ghi trong compose và thắng tệp env.
+- [x] `.dockerignore` ở gốc và ở `services/embedding/` (loại `.venv` nặng).
+- [x] **ARM (Oracle Free):** `binaryTargets = ["native", "debian-openssl-3.0.x",
+      "linux-arm64-openssl-3.0.x"]` trong `db/schema.prisma`. Build cả hai image cho
+      `linux/arm64` được; chạy dưới giả lập QEMU: web ARM nối DB và `/api/health` trả OK
+      (engine Prisma arm64 chạy), sidecar ARM import được torch 2.14.0+cpu và sentence-transformers.
+      Chưa chạy nhúng thật trên ARM: đo tốc độ khi đã có máy Oracle (Bước 7).
+- [x] Trong compose production đặt `RERANK_ENABLED=false`.
+- [x] Chạy thử toàn bộ bằng compose trên máy, trỏ `DATABASE_URL` vào DB dev (qua một role tạm, vì
+      server ở production từ chối `travel:travel`; role đã xoá sau khi thử).
+- Ghi chú cho Bước 6: image web **không có Prisma CLI**, nên `prisma migrate deploy` chạy từ CI
+  (hoặc máy quản trị) thẳng vào Supabase bằng kết nối trực tiếp, không chạy trong container web.
+- Ghi chú: `services/embedding/requirements.txt` không ghim phiên bản. Image vừa build kéo
+  sentence-transformers 6.1.0, còn venv dev là 6.0.1. Ghim bản khi cần build lặp lại được.
 
 **Xong khi:** `docker compose -f docker-compose.prod.yml up` chạy lên, `/ready` của cả hai service
 trả OK, chatbot trả lời được một câu có dùng RAG.
@@ -227,3 +236,5 @@ Mỗi bước xong thì ghi một dòng: ngày, bước, kết quả, commit ho�
 |---|---|---|---|
 | 2026-09-24 | Lập kế hoạch | Tạo tệp này | Đang chờ bước 0 |
 | 2026-09-24 | Bước 0 | Chốt: thử thị trường trên Oracle Free (ARM, Singapore) + Supabase Free; dữ liệu không bắt buộc lưu tại VN; tên miền `vntravelai.food`; tắt rerank | Còn mở: gỡ `client hold` của tên miền, tạo tài khoản Oracle (home region Singapore, nâng PAYG), đặt trần quota Gemini/Maps |
+| 2026-09-24 | Bước 1 | Xong. Commit 5 nhóm (4dc25ba..38f698b), PR #1 merge vào `main` thành `296864b`; CI trên `main` xanh 4/4 (typecheck + test nhanh, integration Postgres, bộ chấm Python, E2E Playwright); `git status` sạch trên `main` | E2E `account.spec.ts` còn chập chờn trên máy local (server test không trả lời request lúc vừa khởi động), CI không gặp |
+| 2026-09-24 | Bước 2 | Xong trên máy dev. Dockerfile web + embedding, `docker-compose.prod.yml`, `.dockerignore`, `binaryTargets` cho arm64. Stack production chạy lên, `/api/health` và `/ready` OK, chatbot trả lời câu RAG có trích dẫn (14 s). Image arm64 build và khởi động được dưới QEMU | Chưa đo tốc độ nhúng trên ARM thật; image web 873 MB, embedding 1,99 GB chưa kèm model |
