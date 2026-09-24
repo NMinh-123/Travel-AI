@@ -137,20 +137,50 @@ trả OK, chatbot trả lời được một câu có dùng RAG.
 
 ## Bước 3: Database trên Supabase
 
-- [ ] Tạo project ở vùng Singapore và đặt mật khẩu DB mạnh. Giai đoạn thử dùng gói **Free**:
-      không có backup hằng ngày như Pro, và project tự tạm dừng khi không có hoạt động 7 ngày. Kiểm
-      lại hạn mức Free hiện tại trên trang giá của Supabase trước khi tạo.
-- [ ] Bật extension `vector`. Migration `20260906000000_chat_and_knowledge` cũng tự tạo extension
-      này, nhưng cần kiểm quyền.
-- [ ] Prisma: app kết nối qua pooler. `prisma migrate deploy` phải đi qua **kết nối trực tiếp hoặc
-      session pooler**, vì transaction pooler ở cổng 6543 không chạy được migrate. Sửa
-      `prisma.config.ts` hoặc schema để có `directUrl`. Nếu dùng transaction pooler, thêm
-      `?pgbouncer=true`.
-- [ ] Chạy `npm run db:migrate:deploy`, `db:seed`, `db:ingest`, rồi `db:audit`. Số bản ghi phải
+- [x] **(Người dùng)** Tạo project trên https://supabase.com/dashboard: gói **Free**, Region
+      **Southeast Asia (Singapore)**, mật khẩu DB mạnh (nút Generate). Gói Free không có backup
+      hằng ngày, và project tự tạm dừng khi không có hoạt động 7 ngày.
+- [x] **(Người dùng)** Lấy chuỗi kết nối: nút **Connect** → **Session pooler** (cổng 5432 trên host
+      `aws-...-ap-southeast-1.pooler.supabase.com`), thay `[YOUR-PASSWORD]` bằng mật khẩu, thêm
+      `?sslmode=require` vào cuối, rồi ghi vào tệp `.env.supabase` ở gốc repo dưới dạng
+      `DATABASE_URL=...`. Tệp này bị `.env*` trong `.gitignore` chặn nên không lọt vào git.
+      **Không dán mật khẩu vào chat.**
+- [x] Không bật extension `vector` trên dashboard: migration `20260906000000_chat_and_knowledge` tự
+      chạy `CREATE EXTENSION IF NOT EXISTS` cho `vector` và `unaccent`, cả hai đều nằm trong danh
+      sách Supabase cho phép. Migration không có lệnh nào cần superuser.
+- [x] Chọn kiểu kết nối: dùng **Session pooler cho cả app lẫn migrate**, không sửa schema để thêm
+      `directUrl`.
+  - Kết nối trực tiếp `db.<ref>.supabase.co` chỉ có IPv6 (trừ khi mua add-on IPv4), mà runner
+    của GitHub Actions không có IPv6, nên migrate từ CI ở Bước 6 không đi được đường đó.
+  - Transaction pooler (cổng 6543) không chạy được `prisma migrate` và buộc thêm
+    `?pgbouncer=true`. Session pooler thì chạy được cả hai, và server chạy lâu dài nên không cần
+    kiểu kết nối ngắn hạn của transaction pooler.
+  - Prisma mở mặc định `số CPU × 2 + 1` kết nối, tức 5 trên máy 2 OCPU, nằm trong giới hạn của
+    session pooler gói Free.
+- [x] Từ máy dev, trỏ `DATABASE_URL` vào Supabase rồi chạy `npm run db:migrate:deploy`,
+      `db:seed`, `db:ingest` (dùng sidecar embedding trên máy dev), rồi `db:audit`. Số bản ghi phải
       **đếm lại từ `data/website`**, không lấy từ trí nhớ.
-- [ ] Kiểm backup hằng ngày và **thử khôi phục một lần** sang một project tạm. Gói Free không có
-      backup tự động: thay bằng `pg_dump` chạy theo lịch trên VPS, giữ vài bản gần nhất, và thử
-      khôi phục một lần.
+- [x] Script backup `scripts/backup-db.sh`: `pg_dump` trong container `postgres:17-alpine`, chỉ
+      schema `public` kèm extension `vector` và `unaccent`, giữ `KEEP` bản gần nhất. Đã thử trên DB
+      dev: xoay vòng giữ đúng số bản; khôi phục vào database trống và đè lên database có sẵn đều
+      ra đủ 167 đoạn / 167 vector / 26 điểm đến / 13 migration. Lần thử đầu (thiếu `--extension`)
+      hỏng ở bảng KnowledgeDoc, nên cờ đó là bắt buộc.
+- [x] Chạy `scripts/backup-db.sh` vào Supabase, khôi phục bản dump vào một database tạm trên máy
+      dev để kiểm (không cần project thứ hai), rồi đặt cron trên VPS ở Bước 4.
+
+- Kết quả 2026-09-24: project Supabase vùng `ap-southeast-1` (Singapore), PostgreSQL 17.6.
+  - 13 migration áp thành công; seed ra 114 địa danh, 26 điểm đến, 20 chỗ nghỉ, 16 đồ dùng, 6
+    trạm thời tiết đèo, 1 lịch trình mẫu, khớp số đếm lại từ `data/website`; ingest 167 đoạn,
+    `db:audit` sạch (167 duyệt, 167 vector, 167 chỉ mục từ khoá).
+  - Stack production (Docker) trỏ vào Supabase: `/api/health` OK, chatbot trả lời câu RAG bằng
+    tác tử tri thức có trích dẫn, không chuyển tiếp (14–17 s).
+  - Sao lưu Supabase bằng `scripts/backup-db.sh` (1,2 MB), khôi phục vào database tạm ra đủ số
+    bản ghi trên. Chưa đặt cron: làm ở Bước 4 khi có VPS.
+  - Bẫy đã gặp khi lấy chuỗi kết nối: mật khẩu để nguyên ngoặc `[ ]` của mẫu; mật khẩu của
+    project cũ (Tokyo) dán vào project mới; ký tự `%` trong mật khẩu phải mã hoá thành `%25`;
+    mật khẩu vừa đặt lại cần 1–2 phút mới đồng bộ sang pooler. Mật khẩu có `$` hoặc `&` thì
+    đừng `source` tệp env trong shell, để Docker `--env-file` hoặc tiến trình tự đọc.
+  - Mật khẩu project Tokyo (đã bỏ) từng lộ trong phiên chat; project Singapore dùng mật khẩu mới.
 
 **Xong khi:** app chạy trên máy trỏ vào Supabase trả lời chatbot đúng, `db:audit` sạch, đã khôi
 phục thử thành công.
@@ -238,3 +268,4 @@ Mỗi bước xong thì ghi một dòng: ngày, bước, kết quả, commit ho�
 | 2026-09-24 | Bước 0 | Chốt: thử thị trường trên Oracle Free (ARM, Singapore) + Supabase Free; dữ liệu không bắt buộc lưu tại VN; tên miền `vntravelai.food`; tắt rerank | Còn mở: gỡ `client hold` của tên miền, tạo tài khoản Oracle (home region Singapore, nâng PAYG), đặt trần quota Gemini/Maps |
 | 2026-09-24 | Bước 1 | Xong. Commit 5 nhóm (4dc25ba..38f698b), PR #1 merge vào `main` thành `296864b`; CI trên `main` xanh 4/4 (typecheck + test nhanh, integration Postgres, bộ chấm Python, E2E Playwright); `git status` sạch trên `main` | E2E `account.spec.ts` còn chập chờn trên máy local (server test không trả lời request lúc vừa khởi động), CI không gặp |
 | 2026-09-24 | Bước 2 | Xong trên máy dev. Dockerfile web + embedding, `docker-compose.prod.yml`, `.dockerignore`, `binaryTargets` cho arm64. Stack production chạy lên, `/api/health` và `/ready` OK, chatbot trả lời câu RAG có trích dẫn (14 s). Image arm64 build và khởi động được dưới QEMU | Chưa đo tốc độ nhúng trên ARM thật; image web 873 MB, embedding 1,99 GB chưa kèm model |
+| 2026-09-24 | Bước 3 | Xong. Supabase Free Singapore (PG 17.6): migrate 13/13, seed khớp `data/website`, ingest 167 đoạn, `db:audit` sạch; app Docker trỏ vào Supabase trả lời chatbot đúng; backup + khôi phục thử thành công | Chưa đặt cron backup (Bước 4). `package.json` có thêm `@supabase/supabase-js` và `@supabase/ssr` do người dùng tự cài, chưa commit và chưa dùng ở đâu |
