@@ -148,8 +148,10 @@ jobs:
           # image, nên không có khoá GHCR nào nằm lại trên máy.
           printf '%s' "$GHCR_TOKEN" | ssh prod "docker login ghcr.io -u '${{ github.actor }}' --password-stdin" > /dev/null
           # Cố ý mở rộng ở phía runner: SHA và tên image phải được điền sẵn trước khi gửi đi.
+          # Tên image gửi đi PHẢI kèm tag: `docker compose` ưu tiên biến môi trường của shell hơn
+          # .env, nên gửi tên trơn thì compose bỏ qua .env và kéo `:latest` — tag không tồn tại.
           # shellcheck disable=SC2029
-          ssh prod "SHA=$SHA WEB_IMAGE=$WEB_IMAGE EMBEDDING_IMAGE=$EMBEDDING_IMAGE sh -s" <<'REMOTE'
+          ssh prod "SHA=$SHA WEB_IMAGE=$WEB_IMAGE:$SHA EMBEDDING_IMAGE=$EMBEDDING_IMAGE:$SHA sh -s" <<'REMOTE'
           set -eu
           cd /opt/travel-ai
           # Mã trên máy (compose, Caddyfile, script) theo đúng commit được deploy. .env và
@@ -159,7 +161,7 @@ jobs:
           # Ghi tag vào .env để một lần `docker compose up` bằng tay sau này vẫn dùng đúng image,
           # không quay về tag :local. Sửa đúng hai dòng, không đụng phần còn lại (có bí mật).
           grep -vE '^(WEB_IMAGE|EMBEDDING_IMAGE)=' .env > .env.tmp || true
-          printf 'WEB_IMAGE=%s:%s\nEMBEDDING_IMAGE=%s:%s\n' "$WEB_IMAGE" "$SHA" "$EMBEDDING_IMAGE" "$SHA" >> .env.tmp
+          printf 'WEB_IMAGE=%s\nEMBEDDING_IMAGE=%s\n' "$WEB_IMAGE" "$EMBEDDING_IMAGE" >> .env.tmp
           cat .env.tmp > .env && rm -f .env.tmp
           docker compose -f docker-compose.prod.yml pull --quiet
           docker compose -f docker-compose.prod.yml up -d --no-build --remove-orphans
