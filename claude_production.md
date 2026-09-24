@@ -203,7 +203,25 @@ Chuẩn bị sẵn trong repo (đã kiểm trên máy dev, chưa chạy trên m�
   compose).
 - `scripts/backup-db.sh` nhận `ENV_FILE` (Docker tự đọc tệp) để cron không phải `source` tệp env.
 
-Việc trên máy thật:
+Máy thật (2026-09-24): cloud server Việt Nam, IP `103.216.116.207`, SSH cổng **24700**, Ubuntu
+24.04.1 x86_64 (KVM), 2 CPU, 7,8 GB RAM, 40 GB. Đăng nhập: `ssh -i ~/.ssh/travelai_vps -p 24700
+deploy@103.216.116.207` (khoá `travelai_vps` nằm trên máy dev của người dùng). Máy đầu tiên của
+nhà cung cấp (`162.4.177.142`) hỏng VM ngay khi tạo và đã được thay.
+
+- [x] `setup-server.sh` chạy xong trên máy thật (sửa thêm 4 chỗ, xem commit `6a34050`): user
+      `deploy` (docker), SSH chỉ bằng khoá (root chỉ vào bằng khoá, mật khẩu tắt), ufw bật và
+      **còn bật sau reboot** (đã reboot 2 lần), Docker 29.8, cron backup, `CF_IPS` trong `.env`.
+      Đã cài bản vá bảo mật và reboot sang kernel 6.8.0-142.
+- [x] `.env` trên máy: `DATABASE_URL` (Supabase), `JWT_SECRET` sinh mới trên máy, `GEMINI_*`,
+      `GOOGLE_CLIENT_ID`, `ALLOWED_ORIGINS=https://vntravelai.food,https://www.vntravelai.food`.
+      Chmod 600, không có ký tự `$`. Còn thiếu: `GOOGLE_MAPS_*` (dev cũng chưa có),
+      `TURNSTILE_*` (tạo ở Bước 5).
+- [x] `web` + `embedding` build ngay trên máy (4 phút 54 giây) và chạy healthy: `/api/health`
+      nối được Supabase; chatbot trả lời câu RAG có trích dẫn trong 13 giây. RAM lúc nghỉ: web
+      139 MB, embedding 895 MB. Từ ngoài, cổng 3000, 8000, 80, 5432 đều đóng.
+- [ ] `caddy` chưa chạy: chờ Origin Certificate (Bước 5).
+
+Việc trên máy thật (danh sách gốc):
 
 - [ ] **(Người dùng)** Security List của VCN trên Oracle Console (Networking → Virtual Cloud
       Networks → subnet → Security List → Ingress Rules):
@@ -328,3 +346,4 @@ Mỗi bước xong thì ghi một dòng: ngày, bước, kết quả, commit ho�
 | 2026-09-24 | Bước 1 | Xong. Commit 5 nhóm (4dc25ba..38f698b), PR #1 merge vào `main` thành `296864b`; CI trên `main` xanh 4/4 (typecheck + test nhanh, integration Postgres, bộ chấm Python, E2E Playwright); `git status` sạch trên `main` | E2E `account.spec.ts` còn chập chờn trên máy local (server test không trả lời request lúc vừa khởi động), CI không gặp |
 | 2026-09-24 | Bước 2 | Xong trên máy dev. Dockerfile web + embedding, `docker-compose.prod.yml`, `.dockerignore`, `binaryTargets` cho arm64. Stack production chạy lên, `/api/health` và `/ready` OK, chatbot trả lời câu RAG có trích dẫn (14 s). Image arm64 build và khởi động được dưới QEMU | Chưa đo tốc độ nhúng trên ARM thật; image web 873 MB, embedding 1,99 GB chưa kèm model |
 | 2026-09-24 | Bước 3 | Xong. Supabase Free Singapore (PG 17.6): migrate 13/13, seed khớp `data/website`, ingest 167 đoạn, `db:audit` sạch; app Docker trỏ vào Supabase trả lời chatbot đúng; backup + khôi phục thử thành công | Chưa đặt cron backup (Bước 4). `package.json` có thêm `@supabase/supabase-js` và `@supabase/ssr` do người dùng tự cài, chưa commit và chưa dùng ở đâu |
+| 2026-09-24 | Bước 4 | Gần xong. Server Việt Nam 103.216.116.207 (SSH 24700) dựng bằng `setup-server.sh`; web + embedding chạy healthy trên máy, nối Supabase, chatbot trả lời RAG; firewall giữ qua reboot | Còn: Origin Certificate để bật `caddy`, rồi kiểm "gọi thẳng IP bị chặn, qua Cloudflare thì OK" ở Bước 5 |
