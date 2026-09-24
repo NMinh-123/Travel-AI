@@ -187,24 +187,55 @@ phục thử thành công.
 
 ## Bước 4: Dựng server (VPS)
 
-- [ ] Tạo user riêng, chỉ đăng nhập SSH bằng khoá, tắt đăng nhập root.
-- [ ] Cài Docker, bật cập nhật bảo mật tự động.
-- [ ] Firewall: SSH chỉ mở cho IP quản trị. 443 (và 80 nếu cần) **chỉ mở cho dải IP Cloudflare**
-      (https://www.cloudflare.com/ips/).
-  - Oracle có HAI lớp chặn: Security List/NSG của VCN trên Console, **và** iptables có sẵn trong
-    image Ubuntu của Oracle. Phải mở cổng ở cả hai lớp, nếu không thì cổng vẫn đóng dù Console
-    đã mở.
-- [ ] Đặt tệp `.env` production trên server, chmod 600, không đưa vào git:
-  - `JWT_SECRET`: sinh mới, ≥ 32 byte ngẫu nhiên.
-  - `DATABASE_URL`: chuỗi pooler của Supabase. Thêm chuỗi trực tiếp nếu migrate chạy từ server.
-  - `GEMINI_*`: giữ proxy và endpoint hiện tại.
-  - `GOOGLE_MAPS_API_KEY`: giới hạn theo IP của VPS. `GOOGLE_MAPS_EMBED_KEY`: giới hạn theo tên miền.
-  - `GOOGLE_CLIENT_ID`: thêm tên miền mới vào Authorized JavaScript origins trên Google Cloud Console.
-  - `ALLOWED_ORIGINS=https://<tên-miền>`, `TRUST_PROXY` (xem bước 5), `NODE_ENV=production`.
-- [ ] Reverse proxy (Caddy hoặc nginx) trên 443 dùng Cloudflare Origin Certificate, chuyển tiếp tới `web`.
+Chuẩn bị sẵn trong repo (đã kiểm trên máy dev, chưa chạy trên máy Oracle thật):
+
+- `deploy/setup-server.sh`, chạy một lần bằng `sudo` trên máy mới: cập nhật bảo mật tự động
+  (unattended-upgrades), Docker (xoay vòng log 10 MB × 3), user `deploy` (nhóm docker, dùng lại
+  khoá SSH của user `ubuntu`), tắt đăng nhập mật khẩu và root, clone repo vào `/opt/travel-ai`,
+  ghi dải IP Cloudflare vào `.env` (`CF_IPS`), cron backup hằng ngày 02:17 giờ Việt Nam. Đã chạy
+  hai lần liên tiếp trong container Ubuntu 24.04: lần hai không đổi gì, `sshd -t` hợp lệ.
+  Chạy thử đã bắt được một lỗi thật và đã sửa: Ubuntu 24.04 bật SSH theo socket activation nên
+  `/run/sshd` có thể chưa có và `systemctl reload ssh` lỗi khi service chưa chạy.
+- `deploy/Caddyfile` + service `caddy` trong `docker-compose.prod.yml`: nhận 443 bằng Cloudflare
+  Origin Certificate, **đóng kết nối nếu request không đến từ dải IP Cloudflare**, chuyển vào
+  `web:3000`. Đã đo bằng container giả lập: peer ngoài dải bị đóng kết nối; peer trong dải thì
+  app nhận `X-Forwarded-For: <khách>, <Cloudflare>`, nên `TRUST_PROXY=2` (ghi cố định trong
+  compose).
+- `scripts/backup-db.sh` nhận `ENV_FILE` (Docker tự đọc tệp) để cron không phải `source` tệp env.
+
+Việc trên máy thật:
+
+- [ ] **(Người dùng)** Security List của VCN trên Oracle Console (Networking → Virtual Cloud
+      Networks → subnet → Security List → Ingress Rules):
+  - TCP 22 **chỉ từ IP quản trị** (`<IP-của-bạn>/32`). IP nhà mạng hay đổi thì cập nhật rule khi
+    đổi; bị khoá ngoài vẫn vào được bằng Cloud Shell / Console Connection của Oracle.
+  - TCP 443 từ các dải của https://www.cloudflare.com/ips-v4 (nếu ngại nhập 15 rule thì mở
+    0.0.0.0/0: Caddy vẫn đóng mọi kết nối không đến từ Cloudflare).
+  - **Không** cần mở 80, 3000 hay 8000.
+- [ ] **(Người dùng)** SSH vào máy bằng user `ubuntu`, chạy `deploy/setup-server.sh` (lệnh ở đầu
+      tệp). Tệp phải có trên nhánh `main` trước, vì script tải từ `main`.
+- [ ] Điền `/opt/travel-ai/.env` (chmod 600, script đã tạo sẵn cùng dòng `CF_IPS`):
+  - `DATABASE_URL`: chuỗi Session pooler của Supabase như `.env.supabase`. Mật khẩu **phải mã
+    hoá URL** (`$` → `%24`, `&` → `%26`, `%` → `%25`): docker compose diễn giải ký tự `$` trong
+    tệp env, và mã hoá thì không còn `$` nào.
+  - `JWT_SECRET`: sinh mới, ≥ 32 byte ngẫu nhiên (`openssl rand -hex 32`), không dùng lại của dev.
+  - `GEMINI_API_KEY`, `GEMINI_BASE_URL`, `GEMINI_MODEL`, `GEMINI_MODEL_LIGHT`: giữ proxy hiện tại.
+  - `GOOGLE_MAPS_API_KEY` (giới hạn theo IP của VPS), `GOOGLE_MAPS_EMBED_KEY` (giới hạn theo tên
+    miền), `GOOGLE_CLIENT_ID` (thêm `https://vntravelai.food` vào Authorized JavaScript origins).
+  - `ALLOWED_ORIGINS=https://vntravelai.food` (thêm `https://www.vntravelai.food` nếu dùng www).
+  - `NODE_ENV`, `TRUST_PROXY`, `EMBEDDER`, `EMBEDDING_*`, `RERANK_ENABLED` đã cố định trong
+    compose, không cần khai.
+- [ ] Đặt Origin Certificate vào `/opt/travel-ai/deploy/certs/origin.pem` và `origin.key`
+      (chmod 600). Thư mục `deploy/certs/` nằm trong `.gitignore`. Tạo cert ở Bước 5.
+- [ ] `docker compose -f docker-compose.prod.yml up -d --build`, rồi
+      `curl -s http://127.0.0.1:3000/api/health` trên máy chủ.
+- Firewall trên máy: cổng do Docker mở (443 của `caddy`) đi qua chain FORWARD/DOCKER-USER, **không
+  qua INPUT**, nên luật REJECT trong INPUT của image Ubuntu Oracle không chặn nó và cũng không
+  bảo vệ nó. Chặn ở tầng mạng là Security List; lớp thứ hai là Caddy. Cần kiểm trên máy thật
+  rằng 443 vào được qua Cloudflare.
 
 **Xong khi:** gọi thẳng vào IP của VPS từ ngoài dải Cloudflare bị chặn, còn gọi qua Cloudflare
-tới `/ready` thì trả OK.
+tới `/api/health` thì trả OK.
 
 ## Bước 5: Cloudflare
 
