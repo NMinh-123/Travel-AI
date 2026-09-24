@@ -67,7 +67,8 @@ describe("KB-02: CSP khớp đúng các nguồn ngoài mà trang thật sự dù
 
     // Thiếu bất kỳ dòng nào dưới đây là một tính năng hỏng trên production: bản đồ trắng, nút
     // đăng nhập Google không hiện, hoặc trang mất font.
-    expect(csp).toContain("frame-src https://www.google.com/maps/embed/");
+    // Cả hai: `/maps/embed/` (có khoá) KHÔNG khớp `/maps/embed?pb=` (không khoá).
+    expect(csp).toContain("frame-src https://www.google.com/maps/embed/ https://www.google.com/maps/embed ");
     expect(csp).toContain("https://accounts.google.com/gsi/client");
     expect(csp).toContain("https://accounts.google.com/gsi/style");
     expect(csp).toContain("https://fonts.googleapis.com");

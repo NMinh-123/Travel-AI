@@ -32,8 +32,13 @@ const GSI_STYLE = "https://accounts.google.com/gsi/style";
  */
 const TURNSTILE = "https://challenges.cloudflare.com";
 
-/** Bản đồ nhúng: client/components/PlaceMap.tsx đặt src tới .../maps/embed/v1/place. */
-const MAPS_EMBED = "https://www.google.com/maps/embed/";
+/**
+ * Bản đồ nhúng của client/components/PlaceMap.tsx, hai đường: có khoá thì `/maps/embed/v1/place`,
+ * không khoá thì `/maps/embed?pb=...`. Nguồn kết thúc bằng `/` chỉ khớp đường con, không khớp
+ * chính `/maps/embed` — thiếu mục thứ hai thì bản đồ không khoá bị CSP chặn, Chrome hiện
+ * "Nội dung này bị chặn".
+ */
+const MAPS_EMBED = ["https://www.google.com/maps/embed/", "https://www.google.com/maps/embed"];
 
 /** Google Fonts: khai trong index.html (stylesheet ở googleapis, file font ở gstatic). */
 const FONTS_STYLE = "https://fonts.googleapis.com";
@@ -80,7 +85,7 @@ function buildCsp(): string {
      */
     "img-src": ["'self'", "data:", "blob:", "https:"],
 
-    "frame-src": [MAPS_EMBED, GSI_FRAME, TURNSTILE],
+    "frame-src": [...MAPS_EMBED, GSI_FRAME, TURNSTILE],
     "connect-src": ["'self'", GSI_CONNECT],
   };
 
