@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, X, Send, User, RefreshCw, LifeBuoy } from 'lucide-react';
+import { Sparkles, X, Send, User, RefreshCw } from 'lucide-react';
 import { ChatMessage } from '@shared/types';
 import { MarkdownMessage, StreamingCursor } from './MarkdownMessage';
 import { useChatSession } from '@client/hooks/useChatSession';
@@ -32,7 +32,7 @@ export const AIConciergeModal: React.FC<AIConciergeModalProps> = ({
   // đọc CÙNG một state: khách hỏi ở đâu thì mở phía kia vẫn thấy nguyên hội thoại (FR-BOT-07).
   // Hook vẫn phải gọi trước `return null` bên dưới theo quy tắc hook, và giờ điều đó vô hại vì
   // nó chỉ đọc context chứ không tự mở phiên như bản trước.
-  const { messages, isLoading, stageLabel, isRestoring, sessionError, escalated, send } = useChatSession(MODAL_GREETING);
+  const { messages, isLoading, stageLabel, isRestoring, sessionError, send } = useChatSession(MODAL_GREETING);
   const chatBusy = isLoading || isRestoring || !!sessionError;
   // Xem ghi chú cùng tên ở AIConciergeTab.
   const streamingNow = messages.some((m) => m.streaming);
@@ -127,18 +127,6 @@ export const AIConciergeModal: React.FC<AIConciergeModalProps> = ({
             </div>
           )}
         </div>
-
-        {/* Chuyển tiếp nhân viên (FR-BOT-08). Không hứa thời gian phản hồi — chưa có ai trực
-            hàng đợi này. Tình huống khẩn hướng thẳng sang số cứu hộ quốc gia. */}
-        {escalated && (
-          <div className="mx-3 mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 flex items-start gap-2">
-            <LifeBuoy className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-            <p className="text-[11px] leading-relaxed text-amber-900">
-              Đã ghi nhận để nhân viên hỗ trợ xem lại. Chưa có mốc thời gian phản hồi.
-              Tình huống khẩn: gọi <strong>113 · 115 · 114</strong>.
-            </p>
-          </div>
-        )}
 
         {/* Input */}
         <div className="p-3 bg-[#f7faf8] border-t border-[#e0e3e1] flex items-center gap-2">

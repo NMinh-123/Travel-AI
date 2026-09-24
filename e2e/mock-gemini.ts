@@ -90,7 +90,6 @@ function replyFor(body: unknown): unknown {
 
   if (keys.has("intent") && keys.has("wantsHuman")) return NLU_REPLY;
   if (keys.has("days") && keys.has("totalKm")) return ITINERARY_REPLY;
-  if (keys.has("summary")) return { reply: "Mình đã ghi nhận và chuyển tới nhân viên hỗ trợ.", suggestions: [], summary: "Yêu cầu từ E2E" };
   return CHAT_REPLY;
 }
 
