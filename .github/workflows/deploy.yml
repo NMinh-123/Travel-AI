@@ -149,7 +149,11 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | ssh prod "docker login ghcr.io -u '${{ github.actor }}' --password-stdin" > /dev/null
           # Cố ý mở rộng ở phía runner: SHA và tên image phải được điền sẵn trước khi gửi đi.
           # shellcheck disable=SC2029
-          ssh prod "SHA=$SHA WEB_IMAGE=$WEB_IMAGE EMBEDDING_IMAGE=$EMBEDDING_IMAGE sh -s" <<'REMOTE'
+          # Tên biến gửi sang máy CỐ Ý khác WEB_IMAGE/EMBEDDING_IMAGE: docker compose ưu tiên biến môi
+          # trường của shell hơn .env, nên nếu shell có WEB_IMAGE (chỉ có tên repo, chưa có tag) thì
+          # compose bỏ qua dòng `WEB_IMAGE=...:<sha>` vừa ghi vào .env và kéo `:latest` — đúng lỗi của
+          # lượt deploy đầu tiên (dfa10fa): "travel-ai-web:latest: not found".
+          ssh prod "SHA=$SHA WEB_REPO=$WEB_IMAGE EMBEDDING_REPO=$EMBEDDING_IMAGE sh -s" <<'REMOTE'
           set -eu
           cd /opt/travel-ai
           # Mã trên máy (compose, Caddyfile, script) theo đúng commit được deploy. .env và
@@ -159,7 +163,7 @@ jobs:
           # Ghi tag vào .env để một lần `docker compose up` bằng tay sau này vẫn dùng đúng image,
           # không quay về tag :local. Sửa đúng hai dòng, không đụng phần còn lại (có bí mật).
           grep -vE '^(WEB_IMAGE|EMBEDDING_IMAGE)=' .env > .env.tmp || true
-          printf 'WEB_IMAGE=%s:%s\nEMBEDDING_IMAGE=%s:%s\n' "$WEB_IMAGE" "$SHA" "$EMBEDDING_IMAGE" "$SHA" >> .env.tmp
+          printf 'WEB_IMAGE=%s:%s\nEMBEDDING_IMAGE=%s:%s\n' "$WEB_REPO" "$SHA" "$EMBEDDING_REPO" "$SHA" >> .env.tmp
           cat .env.tmp > .env && rm -f .env.tmp
           docker compose -f docker-compose.prod.yml pull --quiet
           docker compose -f docker-compose.prod.yml up -d --no-build --remove-orphans
