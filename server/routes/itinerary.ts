@@ -93,7 +93,7 @@ itineraryRouter.post("/plan-itinerary", itineraryLimiter, async (req: Request, r
      * lách qua. Khách chưa đăng nhập tính theo IP.
      */
     const quota = await consumeTurnQuota(optionalUserId(req) ?? `ip:${req.ip ?? "unknown"}`);
-    if (!quota.allowed) return respondAiBudgetExceeded(res, quota.retryAfterSeconds);
+    if (!quota.allowed) return respondAiBudgetExceeded(res, quota.retryAfterSeconds, quota.reason);
 
     const { plan } = await generateItinerary(parsedRequest.value);
     /**

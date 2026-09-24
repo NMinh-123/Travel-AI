@@ -567,6 +567,12 @@ export const config = {
    */
   aiMaxTurnsPerHour: readNumber("AI_MAX_TURNS_PER_HOUR", 120, 0, 100000),
   aiMaxModelCallsPerHour: readNumber("AI_MAX_MODEL_CALLS_PER_HOUR", 2000, 0, 1000000),
+  /**
+   * Số lượt nhờ trợ lý (chat + tạo lịch trình) mà KHÁCH CHƯA ĐĂNG NHẬP được dùng trong 24 giờ,
+   * đếm theo IP. Hết thì mời đăng nhập: tài khoản miễn phí, nhưng buộc một bot phải đăng ký mới
+   * dùng tiếp được, và người vận hành có một danh tính để chặn. 0 là tắt.
+   */
+  aiGuestTurnsPerDay: readNumber("AI_GUEST_TURNS_PER_DAY", 15, 0, 100000),
 
   /**
    * Thời hạn lưu phiên chat CHƯA GẮN TÀI KHOẢN, tính bằng ngày. Xem server/infra/retention.ts về

@@ -100,7 +100,7 @@ async function prepareTurn(req: Request, res: Response) {
    */
   const quota = await consumeTurnQuota(userId ?? `ip:${req.ip ?? "unknown"}`);
   if (!quota.allowed) {
-    respondAiBudgetExceeded(res, quota.retryAfterSeconds);
+    respondAiBudgetExceeded(res, quota.retryAfterSeconds, quota.reason);
     return null;
   }
 

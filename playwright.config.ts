@@ -61,6 +61,9 @@ export default defineConfig({
          * kiểm chính giới hạn đó nằm ở tầng integration.
          */
         RATE_LIMIT_STORE: "memory",
+        // Mọi test E2E chat dưới tư cách khách từ cùng một IP (127.0.0.1), nên trần 15 lượt/ngày
+        // của khách sẽ chặn giữa chừng. Trần đó được kiểm ở server/infra/aiBudget.test.ts.
+        AI_GUEST_TURNS_PER_DAY: "0",
         // Ngưỡng liên quan về 0: E2E không đo chất lượng truy xuất, và một ngưỡng chặn ở đây sẽ
         // biến mọi lượt chat thành chuyển tiếp.
         RAG_MIN_VECTOR_SIMILARITY: "0",

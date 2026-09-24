@@ -17,6 +17,7 @@ async function loadBudget(env: Record<string, string>) {
 afterEach(() => {
   delete process.env.AI_MAX_MODEL_CALLS_PER_HOUR;
   delete process.env.AI_MAX_TURNS_PER_HOUR;
+  delete process.env.AI_GUEST_TURNS_PER_DAY;
   vi.restoreAllMocks();
   vi.resetModules();
 });
@@ -83,6 +84,54 @@ describe("KB-06: hạn mức theo giờ của từng danh tính", () => {
     for (let i = 0; i < 20; i += 1) {
       expect((await consumeTurnQuota("alice")).allowed).toBe(true);
     }
+  });
+});
+
+describe("Trần theo ngày cho khách chưa đăng nhập", () => {
+  it("khách (danh tính ip:) hết lượt thì bị chặn với lý do guest_daily; tài khoản không bị trần này", async () => {
+    const { consumeTurnQuota } = await loadBudget({ AI_GUEST_TURNS_PER_DAY: "3", AI_MAX_TURNS_PER_HOUR: "100" });
+
+    for (let i = 0; i < 3; i += 1) expect((await consumeTurnQuota("ip:1.2.3.4")).allowed).toBe(true);
+    const blocked = await consumeTurnQuota("ip:1.2.3.4");
+    expect(blocked).toMatchObject({ allowed: false, reason: "guest_daily" });
+    // Khoảng chờ tính theo cửa sổ 24 giờ, không phải một giờ.
+    expect(blocked.retryAfterSeconds).toBeGreaterThan(60 * 60);
+
+    // IP khác đếm riêng, và người đã đăng nhập không bị trần theo ngày.
+    expect((await consumeTurnQuota("ip:5.6.7.8")).allowed).toBe(true);
+    for (let i = 0; i < 10; i += 1) expect((await consumeTurnQuota("user-1")).allowed).toBe(true);
+  });
+
+  it("đặt 0 là tắt trần theo ngày", async () => {
+    const { consumeTurnQuota } = await loadBudget({ AI_GUEST_TURNS_PER_DAY: "0", AI_MAX_TURNS_PER_HOUR: "100" });
+
+    for (let i = 0; i < 30; i += 1) expect((await consumeTurnQuota("ip:1.2.3.4")).allowed).toBe(true);
+  });
+
+  it("trần theo giờ vẫn áp cho khách và trả lý do hourly", async () => {
+    const { consumeTurnQuota } = await loadBudget({ AI_GUEST_TURNS_PER_DAY: "50", AI_MAX_TURNS_PER_HOUR: "2" });
+
+    await consumeTurnQuota("ip:1.2.3.4");
+    await consumeTurnQuota("ip:1.2.3.4");
+    expect(await consumeTurnQuota("ip:1.2.3.4")).toMatchObject({ allowed: false, reason: "hourly" });
+  });
+
+  it("phản hồi mời đăng nhập, kèm số lượt và mã GUEST_DAILY_LIMIT", async () => {
+    const { respondAiBudgetExceeded } = await loadBudget({ AI_GUEST_TURNS_PER_DAY: "15" });
+    let status = 0;
+    let body: any = null;
+    const res = {
+      setHeader: () => undefined,
+      status(code: number) { status = code; return this; },
+      json(payload: unknown) { body = payload; return this; },
+    } as unknown as Response;
+
+    respondAiBudgetExceeded(res, 3600, "guest_daily");
+
+    expect(status).toBe(429);
+    expect(body.code).toBe("GUEST_DAILY_LIMIT");
+    expect(body.error).toContain("15");
+    expect(body.details).toMatch(/đăng nhập/i);
   });
 });
 

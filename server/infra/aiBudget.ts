@@ -94,9 +94,40 @@ export async function chargeModelCall(): Promise<void> {
  * mọi giới hạn theo IP: một mạng dùng NAT chung sẽ chia nhau một hạn mức. Vì vậy trần này đặt ở
  * mức mà một người dùng thật không bao giờ với tới.
  */
-export async function consumeTurnQuota(
-  identity: string,
-): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+export interface TurnQuota {
+  allowed: boolean;
+  retryAfterSeconds: number;
+  /** `guest_daily`: khách chưa đăng nhập đã dùng hết lượt trong ngày — trả lời bằng lời mời đăng nhập. */
+  reason?: "hourly" | "guest_daily";
+}
+
+/**
+ * Khách chưa đăng nhập có danh tính dạng `ip:<địa chỉ>` — đúng cách hai route chat và lịch trình
+ * dựng khi không có userId.
+ */
+function isGuest(identity: string): boolean {
+  return identity.startsWith("ip:");
+}
+
+export async function consumeTurnQuota(identity: string): Promise<TurnQuota> {
+  /**
+   * TRẦN THEO NGÀY CHO KHÁCH VÃNG LAI, kiểm trước trần theo giờ: khách đã hết lượt trong ngày thì
+   * câu trả lời đúng là "đăng nhập để hỏi tiếp", không phải "chờ vài phút".
+   *
+   * Đếm theo IP nên kế thừa đúng điểm yếu đã nói ở trên: nhiều người sau cùng một NAT (quán cà
+   * phê, ký túc xá) chia nhau một hạn mức. Với trần theo ngày thì chạm nhanh hơn trần theo giờ,
+   * và lối ra là đăng nhập — tài khoản thì mỗi người đếm riêng.
+   */
+  if (isGuest(identity) && config.aiGuestTurnsPerDay > 0) {
+    const daily = await consume({
+      key: `ai:guest:${identity}`,
+      scope: "ai-guest",
+      windowMs: 24 * ONE_HOUR_MS,
+      max: config.aiGuestTurnsPerDay,
+    });
+    if (!daily.allowed) return { allowed: false, retryAfterSeconds: daily.retryAfterSeconds, reason: "guest_daily" };
+  }
+
   if (config.aiMaxTurnsPerHour <= 0) return { allowed: true, retryAfterSeconds: 0 };
 
   const result = await consume({
@@ -106,15 +137,22 @@ export async function consumeTurnQuota(
     max: config.aiMaxTurnsPerHour,
   });
 
-  return { allowed: result.allowed, retryAfterSeconds: result.retryAfterSeconds };
+  return { allowed: result.allowed, retryAfterSeconds: result.retryAfterSeconds, ...(result.allowed ? {} : { reason: "hourly" as const }) };
 }
 
 /**
  * 429 chứ không 503: 503 nói "hệ thống hỏng", còn đây là hệ thống đang chạy đúng như đã khai và
  * từ chối có lý do. `Retry-After` cho client biết chờ bao lâu thay vì thử lại trong vòng lặp.
  */
-export function respondAiBudgetExceeded(res: Response, retryAfterSeconds: number) {
+export function respondAiBudgetExceeded(res: Response, retryAfterSeconds: number, reason?: TurnQuota["reason"]) {
   res.setHeader("Retry-After", String(retryAfterSeconds));
+  if (reason === "guest_daily") {
+    return res.status(429).json({
+      error: `Bạn đã dùng hết ${config.aiGuestTurnsPerDay} câu hỏi miễn phí hôm nay`,
+      details: "Đăng nhập hoặc tạo tài khoản (miễn phí) để hỏi tiếp.",
+      code: "GUEST_DAILY_LIMIT",
+    });
+  }
   return res.status(429).json({
     error: "Trợ lý AI đang tạm hết hạn mức",
     details: `Bạn vui lòng thử lại sau ${Math.ceil(retryAfterSeconds / 60)} phút.`,
