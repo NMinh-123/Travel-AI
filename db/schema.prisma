@@ -53,6 +53,15 @@ model User {
   provider     Provider @default(EMAIL)
   googleId     String?  @unique
 
+  /// Tăng lên để thu hồi mọi phiên đã phát cho user này, xem server/middleware/auth.ts.
+  sessionVersion Int @default(0)
+
+  /// HMAC của mã OTP quên mật khẩu, không lưu mã gốc. Mỗi user một mã đang hiệu lực; xin mã mới
+  /// thì mã cũ mất tác dụng. Nhập sai quá số lần cho phép thì mã hỏng — xem server/routes/auth.ts.
+  passwordResetCodeHash  String?
+  passwordResetExpiresAt DateTime?
+  passwordResetAttempts  Int       @default(0)
+
   phone      String?
   riderLevel RiderLevel?
 

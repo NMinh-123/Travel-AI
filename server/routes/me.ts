@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { prisma } from "@server/infra/db";
 import type { AuthedRequest } from "@server/middleware/auth";
-import { clearSession, requireUser } from "@server/middleware/auth";
+import { clearSession, issueSession, requireUser } from "@server/middleware/auth";
 import { hashPassword, verifyPassword } from "@server/domain/password";
 import { toRiderLevelCode, toSavedItinerary, toUserProfile, userWithRelations } from "@server/domain/mappers";
 import { asyncRoute } from "@server/middleware/asyncHandler";
@@ -117,10 +117,17 @@ meRouter.post(
       return res.status(401).json({ error: "Mật khẩu hiện tại không đúng" });
     }
 
-    await prisma.user.update({
+    /**
+     * Đổi mật khẩu thì thu hồi mọi phiên khác: người đổi thường là vì nghi bị lộ, và phiên của
+     * kẻ đã đăng nhập bằng mật khẩu cũ không được sống tiếp. Thiết bị đang dùng được phát lại
+     * cookie mới nên không bị đăng xuất.
+     */
+    const updated = await prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: await hashPassword(newPassword) },
+      data: { passwordHash: await hashPassword(newPassword), sessionVersion: { increment: 1 } },
+      select: { sessionVersion: true },
     });
+    issueSession(res, userId, updated.sessionVersion);
 
     return res.status(204).end();
   }),

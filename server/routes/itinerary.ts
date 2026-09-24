@@ -92,7 +92,7 @@ itineraryRouter.post("/plan-itinerary", itineraryLimiter, async (req: Request, r
      * một việc", nên chúng phải cộng vào cùng một trần thay vì mỗi bề mặt có một trần riêng để
      * lách qua. Khách chưa đăng nhập tính theo IP.
      */
-    const quota = await consumeTurnQuota(optionalUserId(req) ?? `ip:${req.ip ?? "unknown"}`);
+    const quota = await consumeTurnQuota((await optionalUserId(req, res)) ?? `ip:${req.ip ?? "unknown"}`);
     if (!quota.allowed) return respondAiBudgetExceeded(res, quota.retryAfterSeconds, quota.reason);
 
     const { plan } = await generateItinerary(parsedRequest.value);

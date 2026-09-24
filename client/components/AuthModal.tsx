@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@client/context/AuthContext';
 import {
   X, Mail, Lock, User, Eye, EyeOff,
-  ShieldCheck, AlertCircle, ArrowRight
+  ShieldCheck, AlertCircle, ArrowRight, MailCheck, KeyRound
 } from 'lucide-react';
 import { Logo } from './Logo';
 import { loadGoogleIdentity } from '@client/lib/googleIdentity';
@@ -44,8 +44,15 @@ export const AuthModal: React.FC = () => {
     googleClientId,
     loginWithGoogle,
     loginWithEmail,
-    registerWithEmail
+    registerWithEmail,
+    requestPasswordReset,
+    resetPassword
   } = useAuth();
+
+  /** Hai bước quên mật khẩu không có đăng nhập Google, không có tab, và chỉ một ô nhập. */
+  const isRecovery = authModalTab === 'forgot' || authModalTab === 'reset';
+  /** Server chỉ đòi Turnstile ở form gửi thư (dễ bị lạm dụng để dội thư), không đòi ở bước đặt mật khẩu mới. */
+  const needsTurnstile = authModalTab !== 'reset';
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -53,6 +60,7 @@ export const AuthModal: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [resetCode, setResetCode] = useState('');
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const [isGoogleBusy, setIsGoogleBusy] = useState(false);
   /**
@@ -76,7 +84,7 @@ export const AuthModal: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isAuthModalOpen || !turnstileSiteKey) return;
+    if (!isAuthModalOpen || !turnstileSiteKey || !needsTurnstile) return;
 
     let cancelled = false;
     loadTurnstile()
@@ -102,7 +110,7 @@ export const AuthModal: React.FC = () => {
       turnstileWidgetId.current = null;
       setTurnstileToken(null);
     };
-  }, [isAuthModalOpen, turnstileSiteKey]);
+  }, [isAuthModalOpen, turnstileSiteKey, needsTurnstile]);
 
   const handleGoogleCredential = useCallback(
     async (credential?: string) => {
@@ -196,9 +204,28 @@ export const AuthModal: React.FC = () => {
 
   if (!isAuthModalOpen) return null;
 
+  const switchTab = (tab: 'login' | 'register' | 'forgot') => {
+    setErrorMessage(null);
+    openAuthModal(tab);
+  };
+
+  const heading = {
+    login: ['Đăng nhập tài khoản', 'Lưu lịch trình AI, đồng bộ lộ trình đèo & cập nhật thời tiết thực tế.'],
+    register: ['Tạo tài khoản mới', 'Gia nhập cộng đồng phượt thủ cao nguyên đá và nhận hỗ trợ 24/7.'],
+    forgot: ['Quên mật khẩu', 'Nhập email đã đăng ký, chúng tôi sẽ gửi mã xác nhận 6 chữ số.'],
+    reset: ['Đặt mật khẩu mới', 'Mật khẩu mới dùng được ngay; các thiết bị khác sẽ bị đăng xuất.'],
+  }[authModalTab];
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    if (authModalTab === 'reset') {
+      setIsSubmitting(true);
+      const res = await resetPassword(email, resetCode, password);
+      setIsSubmitting(false);
+      if (!res.success) setErrorMessage(res.error || 'Không đặt lại được mật khẩu');
+      return;
+    }
     if (turnstileSiteKey && !turnstileToken) {
       setErrorMessage('Vui lòng hoàn tất bước xác minh chống bot bên dưới.');
       return;
@@ -207,7 +234,16 @@ export const AuthModal: React.FC = () => {
     const token = turnstileToken ?? undefined;
 
     try {
-      if (authModalTab === 'login') {
+      if (authModalTab === 'forgot') {
+        const res = await requestPasswordReset(email, token);
+        if (res.success) {
+          setResetCode('');
+          setPassword('');
+          openAuthModal('reset');
+        } else {
+          setErrorMessage(res.error || 'Không gửi được mã đặt lại mật khẩu');
+        }
+      } else if (authModalTab === 'login') {
         const res = await loginWithEmail(email, password, token);
         if (!res.success) {
           setErrorMessage(res.error || 'Đăng nhập không thành công');
@@ -252,23 +288,15 @@ export const AuthModal: React.FC = () => {
             </span>
           </div>
 
-          <h2 className="text-xl font-bold font-display">
-            {authModalTab === 'login' ? 'Đăng nhập tài khoản' : 'Tạo tài khoản mới'}
-          </h2>
-          <p className="text-xs text-emerald-100 mt-0.5">
-            {authModalTab === 'login'
-              ? 'Lưu lịch trình AI, đồng bộ lộ trình đèo & cập nhật thời tiết thực tế.'
-              : 'Gia nhập cộng đồng phượt thủ cao nguyên đá và nhận hỗ trợ 24/7.'}
-          </p>
+          <h2 className="text-xl font-bold font-display">{heading[0]}</h2>
+          <p className="text-xs text-emerald-100 mt-0.5">{heading[1]}</p>
         </div>
 
         {/* Tab Switcher */}
+        {!isRecovery && (
         <div className="flex border-b border-[#e0e3e1] bg-[#f7faf8] p-1.5 mx-6 mt-4 rounded-xl">
           <button
-            onClick={() => {
-              setErrorMessage(null);
-              openAuthModal('login');
-            }}
+            onClick={() => switchTab('login')}
             className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
               authModalTab === 'login'
                 ? 'bg-white text-[#005c55] shadow-xs'
@@ -278,10 +306,7 @@ export const AuthModal: React.FC = () => {
             Đăng Nhập
           </button>
           <button
-            onClick={() => {
-              setErrorMessage(null);
-              openAuthModal('register');
-            }}
+            onClick={() => switchTab('register')}
             className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${
               authModalTab === 'register'
                 ? 'bg-white text-[#005c55] shadow-xs'
@@ -291,6 +316,7 @@ export const AuthModal: React.FC = () => {
             Đăng Ký
           </button>
         </div>
+        )}
 
         {/* Form Body */}
         <div className="p-6 space-y-4">
@@ -304,6 +330,7 @@ export const AuthModal: React.FC = () => {
             Nút Facebook đã bị bỏ: nó vốn chỉ là đăng nhập giả trả về user cứng, còn làm thật
             thì cần Facebook App ID và SDK riêng, hiện chưa có.
           */}
+          {!isRecovery && (<>
           <button
             type="button"
             id="btn-google-login"
@@ -334,6 +361,7 @@ export const AuthModal: React.FC = () => {
               Hoặc với email
             </span>
           </div>
+          </>)}
 
           {/* Error alert */}
           {errorMessage && (
@@ -364,6 +392,47 @@ export const AuthModal: React.FC = () => {
               </div>
             )}
 
+            {authModalTab === 'reset' && (
+              <>
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2 text-xs text-emerald-800">
+                  <MailCheck className="w-4 h-4 shrink-0 text-emerald-600 mt-0.5" />
+                  <span>
+                    Nếu <b>{email}</b> đã có tài khoản, mã xác nhận vừa được gửi tới hộp thư đó và có
+                    hiệu lực trong 15 phút. Không thấy thư thì xem cả mục Spam.
+                  </span>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-[#181c1c]">Mã xác nhận</label>
+                    <button
+                      type="button"
+                      onClick={() => switchTab('forgot')}
+                      className="text-[11px] font-semibold text-[#0051d5] hover:underline"
+                    >
+                      Gửi lại mã
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <KeyRound className="w-4 h-4 text-[#6e7977] absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      required
+                      pattern="\d{6}"
+                      maxLength={6}
+                      placeholder="6 chữ số trong thư"
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ''))}
+                      className="w-full pl-10 pr-4 py-2.5 text-sm tracking-[0.4em] bg-[#f7faf8] border border-[#bdc9c6] rounded-xl focus:outline-none focus:border-[#005c55] focus:bg-white text-[#181c1c]"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {authModalTab !== 'reset' && (
             <div>
               <label className="block text-xs font-semibold text-[#181c1c] mb-1">
                 Địa chỉ Email
@@ -380,11 +449,24 @@ export const AuthModal: React.FC = () => {
                 />
               </div>
             </div>
+            )}
 
+            {authModalTab !== 'forgot' && (
             <div>
-              <label className="block text-xs font-semibold text-[#181c1c] mb-1">
-                Mật khẩu
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-[#181c1c]">
+                  {authModalTab === 'reset' ? 'Mật khẩu mới' : 'Mật khẩu'}
+                </label>
+                {authModalTab === 'login' && (
+                  <button
+                    type="button"
+                    onClick={() => switchTab('forgot')}
+                    className="text-[11px] font-semibold text-[#0051d5] hover:underline"
+                  >
+                    Quên mật khẩu?
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-[#6e7977] absolute left-3.5 top-3" />
                 <input
@@ -405,8 +487,9 @@ export const AuthModal: React.FC = () => {
                 </button>
               </div>
             </div>
+            )}
 
-            {turnstileSiteKey && <div ref={turnstileRef} className="flex justify-center pt-1" />}
+            {turnstileSiteKey && needsTurnstile && <div ref={turnstileRef} className="flex justify-center pt-1" />}
 
             <button
               type="submit"
@@ -417,12 +500,29 @@ export const AuthModal: React.FC = () => {
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>{authModalTab === 'login' ? 'Đăng Nhập Ngay' : 'Tạo Tài Khoản Ha Giang Travel'}</span>
+                  <span>
+                    {{
+                      login: 'Đăng Nhập Ngay',
+                      register: 'Tạo Tài Khoản Ha Giang Travel',
+                      forgot: 'Gửi Mã Xác Nhận',
+                      reset: 'Đặt Mật Khẩu Mới',
+                    }[authModalTab]}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
+
+          {isRecovery && (
+            <button
+              type="button"
+              onClick={() => switchTab('login')}
+              className="w-full text-center text-xs font-semibold text-[#005c55] hover:underline"
+            >
+              Quay lại đăng nhập
+            </button>
+          )}
 
           {/* Footer note */}
           <div className="text-center pt-2 text-[11px] text-[#6e7977] flex items-center justify-center gap-1">

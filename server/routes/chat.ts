@@ -85,7 +85,7 @@ function previousIntentOf(messages: { role: string; agent: string | null }[]): I
  * Trả về `null` nghĩa là ĐÃ trả lời khách rồi; nơi gọi chỉ việc dừng.
  */
 async function prepareTurn(req: Request, res: Response) {
-  const userId = optionalUserId(req);
+  const userId = await optionalUserId(req, res);
   const rawMessage = req.body?.message;
 
   if (typeof rawMessage !== "string" || !rawMessage.trim()) {
@@ -415,7 +415,7 @@ chatRouter.get("/sessions", requireUser, async (req: Request, res: Response, nex
  */
 chatRouter.get("/sessions/:id", async (req: Request, res: Response, next) => {
   try {
-    const session = await loadSession(req.params.id, optionalUserId(req));
+    const session = await loadSession(req.params.id, await optionalUserId(req, res));
     if (!session) return res.status(404).json({ error: "Không tìm thấy phiên hội thoại" });
 
     res.setHeader("Cache-Control", "no-store");
@@ -446,7 +446,7 @@ chatRouter.post("/feedback", async (req: Request, res: Response, next) => {
       return res.status(400).json({ error: "Giá trị phản hồi không hợp lệ" });
     }
 
-    const session = await loadSession(sessionId, optionalUserId(req));
+    const session = await loadSession(sessionId, await optionalUserId(req, res));
     if (!session) return res.status(404).json({ error: "Không tìm thấy phiên hội thoại" });
 
     await prisma.chatSession.update({ where: { id: session.id }, data: { satisfaction } });

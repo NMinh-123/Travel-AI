@@ -19,6 +19,9 @@ import type { DayItinerary, SavedItinerary, UserProfile } from '@shared/types';
  *   nhập", để giao diện không nháy sang trạng thái khách khi còn đang hỏi server.
  */
 
+/** `forgot`: nhập email để nhận mã OTP. `reset`: nhập mã trong thư cùng mật khẩu mới. */
+export type AuthModalTab = 'login' | 'register' | 'forgot' | 'reset';
+
 interface MutationResult {
   success: boolean;
   error?: string;
@@ -39,16 +42,20 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isInitialising: boolean;
   isAuthModalOpen: boolean;
-  authModalTab: 'login' | 'register';
+  authModalTab: AuthModalTab;
   /** null khi server chưa cấu hình GOOGLE_CLIENT_ID — khi đó nút Google phải ẩn. */
   googleClientId: string | null;
-  openAuthModal: (tab?: 'login' | 'register') => void;
+  openAuthModal: (tab?: AuthModalTab) => void;
   closeAuthModal: () => void;
   /** `turnstileToken` chỉ có khi server bật Turnstile — xem AuthModal. */
   loginWithEmail: (email: string, password: string, turnstileToken?: string) => Promise<MutationResult>;
   registerWithEmail: (name: string, email: string, password: string, turnstileToken?: string) => Promise<MutationResult>;
   /** `credential` là ID token do Google Identity Services trả về, server xác thực lại. */
   loginWithGoogle: (credential: string) => Promise<MutationResult>;
+  /** Server trả cùng một kết quả dù email có tài khoản hay không. */
+  requestPasswordReset: (email: string, turnstileToken?: string) => Promise<MutationResult>;
+  /** `code` là mã 6 chữ số trong thư; thành công thì đăng nhập luôn. */
+  resetPassword: (email: string, code: string, password: string) => Promise<MutationResult>;
   logout: () => Promise<void>;
   updateProfile: (data: ProfileUpdate) => Promise<MutationResult>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<MutationResult>;
@@ -74,7 +81,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
   const [savedItineraries, setSavedItineraries] = useState<SavedItinerary[]>([]);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
+  const [authModalTab, setAuthModalTab] = useState<AuthModalTab>('login');
   // Ý định bấm trái tim lúc chưa đăng nhập. Giữ lại để hoàn tất ngay sau khi đăng nhập —
   // nếu không, thao tác rơi mất im lặng và khách tưởng mình đã lưu (TC-EXP-10).
   const pendingFavouriteRef = useRef<string | null>(null);
@@ -115,7 +122,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     else setSavedItineraries([]);
   }, [user, loadSavedItineraries]);
 
-  const openAuthModal = useCallback((tab: 'login' | 'register' = 'login') => {
+  const openAuthModal = useCallback((tab: AuthModalTab = 'login') => {
     setAuthModalTab(tab);
     setIsAuthModalOpen(true);
   }, []);
@@ -178,6 +185,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const loginWithGoogle = useCallback(
     (credential: string) =>
       authenticate('/api/auth/google', { credential }, 'Đăng nhập Google thất bại'),
+    [authenticate]
+  );
+
+  const requestPasswordReset = useCallback(
+    async (email: string, turnstileToken?: string): Promise<MutationResult> => {
+      try {
+        await apiRequest<{ ok: true }>('/api/auth/forgot-password', {
+          method: 'POST',
+          body: JSON.stringify({ email, turnstileToken })
+        });
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: errorMessage(error, 'Không gửi được liên kết đặt lại mật khẩu') };
+      }
+    },
+    []
+  );
+
+  const resetPassword = useCallback(
+    (email: string, code: string, password: string) =>
+      authenticate('/api/auth/reset-password', { email, code, password }, 'Không đặt lại được mật khẩu'),
     [authenticate]
   );
 
@@ -336,6 +364,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loginWithEmail,
         registerWithEmail,
         loginWithGoogle,
+        requestPasswordReset,
+        resetPassword,
         logout,
         updateProfile,
         changePassword,

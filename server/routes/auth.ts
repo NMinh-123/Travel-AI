@@ -1,7 +1,9 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { OAuth2Client } from "google-auth-library";
-import { config, hasGoogleCredentials } from "@server/config";
+import { createHmac, randomInt } from "node:crypto";
+import { config, hasGoogleCredentials, hasMailer } from "@server/config";
+import { sendMail } from "@server/infra/mailer";
 import { prisma } from "@server/infra/db";
 import { clearSession, issueSession, optionalUserId } from "@server/middleware/auth";
 import { MIN_PASSWORD_LENGTH, hashPassword, verifyPassword } from "@server/domain/password";
@@ -22,6 +24,13 @@ const authLimiter = rateLimit({
   max: 20,
   message: "Bạn đã thử quá nhiều lần",
 });
+
+/**
+ * Hash giả, băm cùng cost với hash thật, để đăng nhập bằng email không có mật khẩu (không tồn
+ * tại, hoặc chỉ đăng nhập Google) vẫn tốn đúng một lượt bcrypt. Bỏ qua bcrypt ở nhánh đó thì
+ * thời gian phản hồi chênh hàng chục lần, đủ để liệt kê email dù câu báo lỗi giống hệt nhau.
+ */
+const DUMMY_HASH = hashPassword(crypto.randomUUID());
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -78,7 +87,7 @@ authRouter.post(
       include: userWithRelations,
     });
 
-    issueSession(res, user.id);
+    issueSession(res, user.id, user.sessionVersion);
     return res.status(201).json({ user: toUserProfile(user) });
   }),
 );
@@ -143,7 +152,8 @@ authRouter.post(
       include: userWithRelations,
     });
 
-    if (!user?.passwordHash || !(await verifyPassword(parsed.password, user.passwordHash))) {
+    const passwordOk = await verifyPassword(parsed.password, user?.passwordHash ?? (await DUMMY_HASH));
+    if (!user?.passwordHash || !passwordOk) {
       /**
        * Đếm cả trường hợp email không tồn tại. Nếu chỉ đếm khi email có thật thì chính bộ đếm
        * trở thành một cách liệt kê tài khoản: gõ sai 11 lần, ai trả 429 thì email đó tồn tại.
@@ -157,7 +167,165 @@ authRouter.post(
       return res.status(401).json({ error: INVALID_CREDENTIALS });
     }
 
-    issueSession(res, user.id);
+    issueSession(res, user.id, user.sessionVersion);
+    return res.json({ user: toUserProfile(user) });
+  }),
+);
+
+/**
+ * QUÊN MẬT KHẨU bằng mã OTP 6 chữ số gửi qua email.
+ *
+ * Mã ngắn thì dễ gõ nhưng chỉ có một triệu khả năng, nên ba lớp chặn dưới đây là BẮT BUỘC chứ
+ * không phải tuỳ chọn:
+ *  - Mỗi mã chỉ được nhập sai `PASSWORD_RESET_MAX_ATTEMPTS` lần, quá thì mã hỏng.
+ *  - Mỗi email chỉ xin được `PASSWORD_RESET_MAX` mã mỗi giờ.
+ *  → Tối đa khoảng 15 lần đoán mỗi giờ trên một triệu khả năng.
+ *  - Database chỉ giữ HMAC của mã với khoá là JWT_SECRET. SHA-256 trần của 6 chữ số thì bị dò
+ *    ngược trong tích tắc nếu bản sao database bị lộ; có HMAC thì phải lộ cả khoá.
+ */
+const PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_MAX_ATTEMPTS = 5;
+/** Mỗi email tối đa 3 mã mỗi giờ: đủ cho người bấm gửi lại vì chưa thấy thư, không đủ để dội thư. */
+const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
+const PASSWORD_RESET_MAX = 3;
+const INVALID_RESET_CODE = "Mã xác nhận không đúng hoặc đã hết hạn";
+const RESET_CODE_PATTERN = /^\d{6}$/;
+
+/** Gắn email vào HMAC để cùng một mã ở hai tài khoản cho ra hai giá trị khác nhau. */
+export function hashResetCode(email: string, code: string): string {
+  return createHmac("sha256", config.jwtSecret).update(`password-reset:${email}:${code}`).digest("hex");
+}
+
+async function sendPasswordResetCode(email: string): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (!user) return;
+
+  const code = randomInt(0, 1_000_000).toString().padStart(6, "0");
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordResetCodeHash: hashResetCode(email, code),
+      passwordResetExpiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+      passwordResetAttempts: 0,
+    },
+  });
+
+  await sendMail({
+    to: email,
+    subject: `${code} là mã đặt lại mật khẩu Ha Giang Travel`,
+    text:
+      `Mã đặt lại mật khẩu của bạn: ${code}\n\n` +
+      `Nhập mã này vào hộp thoại trên trang trong 15 phút. Đừng chia sẻ mã cho bất kỳ ai.\n\n` +
+      `Nếu không phải bạn yêu cầu, hãy bỏ qua thư này — mật khẩu hiện tại vẫn giữ nguyên.`,
+    html:
+      `<p>Mã đặt lại mật khẩu của bạn:</p>` +
+      `<p style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</p>` +
+      `<p>Nhập mã này vào hộp thoại trên trang trong 15 phút. Đừng chia sẻ mã cho bất kỳ ai.</p>` +
+      `<p>Nếu không phải bạn yêu cầu, hãy bỏ qua thư này — mật khẩu hiện tại vẫn giữ nguyên.</p>`,
+  });
+}
+
+authRouter.post(
+  "/forgot-password",
+  authLimiter,
+  requireTurnstile,
+  asyncRoute(async (req: Request, res: Response) => {
+    if (!hasMailer()) {
+      return res.status(503).json({
+        error: "Chức năng quên mật khẩu chưa được cấu hình",
+        details: "Thiếu RESEND_API_KEY hoặc MAIL_FROM trên server.",
+      });
+    }
+
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    if (!EMAIL_PATTERN.test(email)) {
+      return res.status(400).json({ error: "Địa chỉ email không đúng định dạng" });
+    }
+
+    // Đếm cả email không tồn tại, như bộ đếm đăng nhập: chỉ đếm email có thật thì mã 429 thành
+    // cách liệt kê tài khoản.
+    const quota = await consume({
+      key: `password-reset:${email}`,
+      scope: "password-reset-email",
+      windowMs: PASSWORD_RESET_WINDOW_MS,
+      max: PASSWORD_RESET_MAX,
+    });
+    if (!quota.allowed) {
+      res.setHeader("Retry-After", String(quota.retryAfterSeconds));
+      return res.status(429).json({
+        error: "Email này vừa nhận nhiều mã đặt lại mật khẩu",
+        details: `Kiểm tra hộp thư (cả mục Spam) hoặc thử lại sau ${Math.ceil(quota.retryAfterSeconds / 60)} phút.`,
+      });
+    }
+
+    /**
+     * Trả lời NGAY, rồi mới tra user và gửi thư. Chờ xong mới trả thì email có tài khoản phản hồi
+     * chậm hơn hẳn (một lượt ghi DB và một lượt gọi Resend) — lại là cách liệt kê email bằng thời
+     * gian, cùng loại với lỗi đã sửa ở /login. Câu trả lời cũng giống hệt nhau cho mọi email.
+     */
+    res.status(202).json({ ok: true });
+    sendPasswordResetCode(email).catch((error) => {
+      console.error("Không gửi được mã đặt lại mật khẩu:", error);
+    });
+  }),
+);
+
+authRouter.post(
+  "/reset-password",
+  authLimiter,
+  asyncRoute(async (req: Request, res: Response) => {
+    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+    const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
+
+    if (!EMAIL_PATTERN.test(email) || !RESET_CODE_PATTERN.test(code)) {
+      return res.status(400).json({ error: INVALID_RESET_CODE });
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({ error: `Mật khẩu phải có ít nhất ${MIN_PASSWORD_LENGTH} ký tự` });
+    }
+
+    /**
+     * Không tra user trước. Mọi request, dù email có tài khoản hay không, mã đúng hay sai, đều đi
+     * cùng một đường: một lượt bcrypt rồi hai câu UPDATE có điều kiện. Rẽ nhánh sớm theo "có user
+     * không" thì thời gian phản hồi lại lộ email nào có tài khoản.
+     *
+     * Điều kiện nằm trong chính câu UPDATE, nên hai request cùng mã chạy song song chỉ một cái
+     * khớp, và mã đã hỏng vì sai quá số lần thì không bao giờ khớp nữa. Tăng sessionVersion để đá
+     * mọi phiên cũ ra — người quên mật khẩu có thể đang bị kẻ khác dùng tài khoản.
+     *
+     * Tài khoản chỉ đăng nhập Google (chưa có mật khẩu) cũng đặt được mật khẩu qua đây: nhận được
+     * mã ở hộp thư là đã chứng minh sở hữu email, như chính Google đã làm.
+     */
+    const passwordHash = await hashPassword(password);
+    const { count } = await prisma.user.updateMany({
+      where: {
+        email,
+        passwordResetCodeHash: hashResetCode(email, code),
+        passwordResetExpiresAt: { gt: new Date() },
+        passwordResetAttempts: { lt: PASSWORD_RESET_MAX_ATTEMPTS },
+      },
+      data: {
+        passwordHash,
+        passwordResetCodeHash: null,
+        passwordResetExpiresAt: null,
+        passwordResetAttempts: 0,
+        sessionVersion: { increment: 1 },
+      },
+    });
+
+    if (count === 0) {
+      // Email không tồn tại hay không có mã đang chờ thì câu này khớp 0 hàng — vẫn chạy để hai
+      // nhánh tốn như nhau.
+      await prisma.user.updateMany({
+        where: { email, passwordResetCodeHash: { not: null } },
+        data: { passwordResetAttempts: { increment: 1 } },
+      });
+      return res.status(400).json({ error: INVALID_RESET_CODE });
+    }
+
+    const user = await prisma.user.findUniqueOrThrow({ where: { email }, include: userWithRelations });
+    issueSession(res, user.id, user.sessionVersion);
     return res.json({ user: toUserProfile(user) });
   }),
 );
@@ -203,9 +371,16 @@ authRouter.post(
 
     /**
      * Gộp theo email: người đã đăng ký bằng mật khẩu rồi bấm đăng nhập Google vẫn vào đúng
-     * tài khoản cũ, không tạo ra bản ghi thứ hai. `passwordHash` giữ nguyên nên họ vẫn đăng
-     * nhập được bằng mật khẩu.
+     * tài khoản cũ, không tạo ra bản ghi thứ hai.
+     *
+     * Lần ĐẦU gộp thì xoá mật khẩu và thu hồi mọi phiên cũ. Đăng ký bằng mật khẩu không xác thực
+     * email, nên kẻ tấn công có thể mở trước tài khoản bằng email của nạn nhân; nếu giữ mật khẩu
+     * đó thì sau khi nạn nhân đăng nhập Google, kẻ tấn công vẫn vào được và thấy mọi thứ nạn nhân
+     * lưu. Google đã xác thực email, còn mật khẩu thì chưa ai chứng minh là của chủ email.
      */
+    const existing = await prisma.user.findUnique({ where: { email }, select: { googleId: true } });
+    const firstLink = existing !== null && existing.googleId === null;
+
     const user = await prisma.user.upsert({
       where: { email },
       create: {
@@ -219,11 +394,12 @@ authRouter.post(
       update: {
         googleId: payload.sub,
         ...(payload.picture ? { avatar: payload.picture } : {}),
+        ...(firstLink ? { passwordHash: null, sessionVersion: { increment: 1 } } : {}),
       },
       include: userWithRelations,
     });
 
-    issueSession(res, user.id);
+    issueSession(res, user.id, user.sessionVersion);
     return res.json({ user: toUserProfile(user) });
   }),
 );
@@ -240,7 +416,7 @@ authRouter.post(
 authRouter.get(
   "/me",
   asyncRoute(async (req: Request, res: Response) => {
-    const userId = optionalUserId(req);
+    const userId = await optionalUserId(req, res);
     if (!userId) return res.json({ user: null });
 
     const user = await prisma.user.findUnique({

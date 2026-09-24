@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import express from "express";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 import type { Server } from "node:http";
 import { config } from "@server/config";
 import { AiUnavailableError, respondAiUnavailable } from "@server/infra/gemini";
@@ -14,7 +15,7 @@ import { AiUnavailableError, respondAiUnavailable } from "@server/infra/gemini";
  * thật cho những câu hỏi ấy thì chậm hơn nhiều mà không trả lời chính xác hơn.
  */
 const db = vi.hoisted(() => ({
-  user: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn() },
+  user: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
   savedItinerary: { count: vi.fn(), create: vi.fn(), findMany: vi.fn() },
   $transaction: vi.fn(),
 }));
@@ -71,7 +72,7 @@ afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 beforeEach(() => {
   credentials.has.mockReturnValue(true);
   // `requireAuth` tra user trong database để một phiên của tài khoản đã xoá không còn dùng được.
-  db.user.findUnique.mockResolvedValue({ id: USER });
+  db.user.findUnique.mockResolvedValue({ id: USER, sessionVersion: 0 });
 });
 
 describe("TC-SYS-02: trợ lý chưa cấu hình khoá API", () => {
@@ -143,6 +144,24 @@ describe("TC-PROF-06: tài khoản Google không đổi được mật khẩu", 
 
     expect(response.status).toBe(409);
     expect((await response.json()).error).toMatch(/Google/);
+  });
+});
+
+describe("đổi mật khẩu thu hồi các phiên khác", () => {
+  it("tăng sessionVersion và phát lại cookie cho thiết bị đang dùng", async () => {
+    db.user.findUniqueOrThrow.mockResolvedValue({ passwordHash: bcrypt.hashSync("mat-khau-cu-8", 4) });
+    db.user.update.mockResolvedValue({ sessionVersion: 1 });
+
+    const response = await request("/api/me/password", {
+      currentPassword: "mat-khau-cu-8",
+      newPassword: "mat-khau-moi-8-ky-tu",
+    });
+
+    expect(response.status).toBe(204);
+    expect(db.user.update.mock.calls[0][0].data.sessionVersion).toEqual({ increment: 1 });
+    const cookie = response.headers.get("set-cookie") ?? "";
+    const token = /travel_ai_session=([^;]+)/.exec(cookie)?.[1] ?? "";
+    expect(jwt.verify(token, config.jwtSecret)).toMatchObject({ sub: USER, ver: 1 });
   });
 });
 

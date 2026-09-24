@@ -41,7 +41,7 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
 beforeEach(() => {
   vi.resetAllMocks();
-  db.user.findUnique.mockResolvedValue({ id: "alice" });
+  db.user.findUnique.mockResolvedValue({ id: "alice", sessionVersion: 0 });
   db.chatSession.findMany.mockResolvedValue([]);
 });
 

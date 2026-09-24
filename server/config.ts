@@ -440,6 +440,13 @@ export const config = {
   turnstileSecretKey: process.env.TURNSTILE_SECRET_KEY?.trim() ?? "",
 
   /**
+   * Gửi email qua Resend (mã OTP quên mật khẩu). Thiếu một trong hai thì chức năng tắt và
+   * endpoint trả 503 — xem `hasMailer()`.
+   */
+  resendApiKey: process.env.RESEND_API_KEY?.trim() ?? "",
+  mailFrom: process.env.MAIL_FROM?.trim() ?? "",
+
+  /**
    * Tầng RAG. Cả năm biến dưới đây đều KHÔNG bắt buộc, khác với DATABASE_URL và JWT_SECRET:
    * thiếu sidecar thì đặt EMBEDDER=gemini là chạy được, thiếu cả API key thì /api/chat trả 503
    * như trước. Không có đường nào dựng nội dung giả để che lỗi cấu hình.
@@ -606,6 +613,10 @@ export function hasMapsEmbedKey(): boolean {
  * hiện widget để lấy token — mọi lần đăng nhập đều hỏng; chỉ có site key thì trang hiện widget mà
  * server không kiểm gì. Cả hai đều tệ hơn tắt hẳn.
  */
+export function hasMailer(): boolean {
+  return config.resendApiKey.length > 0 && config.mailFrom.length > 0;
+}
+
 export function hasTurnstile(): boolean {
   return config.turnstileSiteKey.length > 0 && config.turnstileSecretKey.length > 0;
 }
