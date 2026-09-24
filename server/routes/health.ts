@@ -14,9 +14,25 @@ healthRouter.get(
   "/health",
   asyncRoute(async (_req: Request, res: Response) => {
     const aiConfigured = hasGeminiCredentials();
-    res.json({
-      status: "ok",
-      dbConnected: await isDatabaseReachable(),
+    const dbConnected = await isDatabaseReachable();
+
+    /**
+     * MẤT DATABASE PHẢI LỘ RA Ở MÃ TRẠNG THÁI, KHÔNG CHỈ Ở MỘT TRƯỜNG TRONG THÂN.
+     *
+     * Bản trước luôn trả 200 kèm `status: "ok"` kể cả khi `dbConnected` bằng false. Ai cắm
+     * endpoint này làm readiness probe cho load balancer — cách dùng hiển nhiên nhất của một
+     * đường dẫn tên là /health — thì chỉ kiểm mã 200, và một tiến trình mất hẳn database vẫn
+     * được coi là sẵn sàng nhận traffic. Nó sẽ nhận, rồi trả lỗi cho từng khách một.
+     *
+     * Không có database thì ứng dụng này không làm được gì đáng kể: danh sách điểm đến, đăng
+     * nhập, lịch sử hội thoại và lịch trình đã lưu đều đi qua Postgres. Nên 503 là câu trả lời
+     * đúng, chứ không phải 200 kèm một lời chú thích.
+     *
+     * Thân phản hồi giữ nguyên hình dạng để nơi nào đang đọc `dbConnected` vẫn đọc được.
+     */
+    res.status(dbConnected ? 200 : 503).json({
+      status: dbConnected ? "ok" : "degraded",
+      dbConnected,
       aiConfigured,
       /**
        * Tên model chỉ lộ ra ngoài production.

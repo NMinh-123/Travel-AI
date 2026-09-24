@@ -121,21 +121,24 @@ function baseFilter(options: RetrievalOptions): Prisma.Sql {
     );
   }
   /**
-   * Bộ lọc hai tầng, không phải phân mảnh phẳng theo địa danh: đoạn cấp địa bàn LUÔN là ứng viên,
-   * cộng thêm đoạn của đúng những nơi khách nhắc tới.
+   * ĐỊA DANH KHÔNG LỌC BỚT ỨNG VIÊN — nó đi xuống `metadataFilter` để XẾP HẠNG.
    *
-   * Đây là chỗ dễ làm sai nhất của cả thiết kế. Lọc cứng `placeSlug IN (...)` sẽ loại 23/31 đoạn
-   * hiện có — toàn bộ tri thức về giấy tờ biên giới, bằng lái, sạt lở mùa mưa, ứng xử bản làng —
-   * ngay khi khách lỡ nhắc tên một địa danh trong câu hỏi. Hỏi "đi Mã Pí Lèng cần mang giấy tờ
-   * gì" mà mất hết tài liệu giấy tờ thì bộ lọc phản tác dụng đúng vào việc nó sinh ra để làm.
+   * Bản trước lọc hai tầng ngay ở đây: `"scope" = 'PROVINCE' OR "placeSlug" IN (...)`. Cửa thoát
+   * `PROVINCE` sinh ra để tri thức cấp địa bàn không biến mất khi khách nhắc một địa danh, và nó
+   * làm đúng việc đó. Nhưng lần chạy đánh giá ngày 2026-09-22 chỉ ra chỗ nó không đỡ nổi: tài liệu
+   * gắn `scope = PLACE` ở một địa danh KHÁC với địa danh khách nhắc thì bị loại sạch, kể cả khi
+   * đúng là tài liệu trả lời được câu hỏi.
+   *
+   * GS-107 là ca nói lên vấn đề rõ nhất. Câu hỏi "Trước khi nhận xe máy thuê thì nên kiểm tra
+   * những gì?" KHÔNG nhắc nơi nào cả; NLU tự bịa ra `destinations: ["Hà Giang"]`, cho ra khoá
+   * `ha-giang` của tỉnh, trong khi tài liệu đúng gắn ở `tp-ha-giang` của thành phố. Tài liệu ấy ở
+   * hạng 1 với độ tương đồng 0.6562 mà vẫn bị gạt, và lượt đó kết thúc bằng một câu chuyển tiếp.
+   *
+   * Gốc của chuyện này là một CỔNG CỨNG DỰA TRÊN TÍN HIỆU DO MODEL SINH RA. Mảng `destinations`
+   * đến từ một lượt gọi model, nên nó bịa được, sót được, và trả về khoá lệch cấp được. Một tín
+   * hiệu như vậy được phép làm thay đổi THỨ TỰ, không được phép làm biến mất ứng viên — đúng
+   * nguyên tắc mà ba chiều metadata ở dưới đã theo từ đầu.
    */
-  if (options.placeSlugs?.length) {
-    clauses.push(
-      Prisma.sql`("scope" = 'PROVINCE' OR "placeSlug" IN (${Prisma.join(
-        options.placeSlugs.map((slug) => Prisma.sql`${slug}`),
-      )}))`,
-    );
-  }
 
   return Prisma.join(clauses, " AND ");
 }
@@ -153,6 +156,19 @@ function baseFilter(options: RetrievalOptions): Prisma.Sql {
  */
 export function metadataFilter(options: RetrievalOptions): Prisma.Sql | null {
   const clauses: Prisma.Sql[] = [];
+
+  /**
+   * Địa danh khách nhắc tới, ở đây thay vì ở `baseFilter` — xem ghi chú tại đó. Giữ nguyên cả
+   * `scope = 'PROVINCE'`: tri thức cấp địa bàn vẫn đáng được cộng điểm cho mọi câu có nêu nơi
+   * chốn, vì nó áp dụng được ở bất kỳ nơi nào trong số đó.
+   */
+  if (options.placeSlugs?.length) {
+    clauses.push(
+      Prisma.sql`("scope" = 'PROVINCE' OR "placeSlug" IN (${Prisma.join(
+        options.placeSlugs.map((slug) => Prisma.sql`${slug}`),
+      )}))`,
+    );
+  }
 
   if (options.domains?.length) {
     clauses.push(Prisma.sql`"domain"::text IN (${Prisma.join(options.domains.map((value) => Prisma.sql`${value}`))})`);

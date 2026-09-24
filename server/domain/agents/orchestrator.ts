@@ -6,6 +6,7 @@ import { TraceCollector } from "./trace";
 import { resolve } from "@server/domain/temporal/router";
 import { mergeTemporalPhrases } from "@server/domain/temporal/phrases";
 import { mergeSlots, missingSlots, questionFor } from "./dialog";
+import { extractSlots } from "./slotExtract";
 import { inspect } from "./guardrail";
 import { classifyFailure, type FailureClass } from "./failure";
 import { runBudget } from "./specialists/budget";
@@ -33,6 +34,14 @@ export interface TurnInput {
   message: string;
   slots: Slots;
   history: { role: "user" | "assistant"; content: string }[];
+  /**
+   * Tác tử đã phục vụ lượt gần nhất của phiên này — tức VIỆC ĐANG LÀM DỞ.
+   *
+   * Dialog Manager mang slot qua các lượt nhưng không mang việc, nên một câu sửa lại yêu cầu cũ
+   * ("À cho mình thuê người lái thôi") đứng một mình thì không còn đủ nghĩa để phân loại. Nơi gọi
+   * lấy từ `ChatMessage.agent` đã lưu sẵn; bỏ trống thì hành vi y như trước.
+   */
+  previousIntent?: Intent;
   /**
    * Kênh đẩy tiến trình và chữ ra ngay trong lúc lượt đang chạy. Chỉ endpoint streaming truyền
    * vào; thiếu nó thì `handleTurn` chạy y hệt bản cũ và trả về đúng một lần ở cuối.
@@ -184,9 +193,27 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
    * Chỉ mang khi lượt này KHÔNG tự nêu nơi nào. Khách vừa nhắc tên mới thì tên mới thắng, kể cả
    * khi câu vẫn còn một đại từ ở chỗ khác.
    */
+  /**
+   * Điều kiện là "CÂU CHỮ không nêu nơi nào", không phải "không phân giải được nơi nào".
+   *
+   * Bản trước hỏi `placeSlugs.length === 0`. Nhưng `placeSlugs` gộp cả `resolved.slugs` — thứ lấy
+   * từ `nlu.entities.destinations`, mà NLU thì tự mang địa danh của lượt trước sang. Nên với câu
+   * "Ở đó ăn sáng thì nên ăn gì?" sau khi khách vừa hỏi về phố cổ Đồng Văn, NLU trả về
+   * `destinations: ["Phố cổ Đồng Văn"]`, `placeSlugs` không rỗng, và nhánh mang địa danh KHÔNG
+   * chạy — trong khi câu chữ đưa đi nhúng vẫn còn nguyên chữ "Ở đó" và không có tên nơi nào.
+   *
+   * Hậu quả đo được trên GS-201: truy xuất trả về Cổng Trời Quản Bạ, quần áo theo mùa và điểm
+   * ngắm Bản Phùng — không đoạn nào về Đồng Văn, không đoạn nào về ăn uống. Ghép tên nơi vào thì
+   * ra 5 đoạn, trong đó có đúng `food:food-banh-cuon-dong-van`. Guardrail chặn lượt đó là đúng;
+   * thứ sai nằm ở truy vấn đưa cho nó.
+   *
+   * `scanned` là kết quả quét CHÍNH câu khách gõ, nên nó trả lời đúng câu hỏi cần hỏi. Nguồn địa
+   * danh để ghép lấy từ `nlu.entities.destinations` trước, rồi mới tới slot đã gom qua các lượt.
+   */
+  const namedInText = scanned.length > 0;
   const rewrite = rewriteQuery({
     message: normalized.query,
-    carriedPlaces: placeSlugs.length === 0 ? slots.destinations ?? [] : [],
+    carriedPlaces: namedInText ? [] : nlu.entities.destinations ?? slots.destinations ?? [],
   });
   if (rewrite.resolvedPlaces.length > 0) {
     const carried = await deps.resolvePlaceNames(rewrite.resolvedPlaces);
@@ -240,26 +267,79 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
    * Văn mất bao lâu" nhắc Hà Nội — nằm ngoài địa bàn — nhưng vẫn là câu hỏi hợp lệ vì Đồng Văn
    * nhận diện được.
    *
-   * Hai nguồn tín hiệu: `resolved.unknown` là tên NLU trích ra mà từ điển không có, còn `outOfArea`
-   * là danh sách chặn tường minh. Cần cả hai vì nguồn thứ nhất phụ thuộc vào một lượt gọi model —
-   * NLU bỏ sót hoặc chưa cấu hình được API key thì chỉ còn nguồn thứ hai đứng lại.
+   * CHỈ tin `outOfArea`, tức danh sách chặn tường minh. Bản trước tin thêm `resolved.unknown` —
+   * những tên NLU trích ra mà từ điển không có — và đó là một sai lầm đo được: mảng `destinations`
+   * do model trả về chứa cả CỤM DANH TỪ CHUNG, không riêng tên riêng. Lần chạy đánh giá ngày
+   * 2026-09-22 cho thấy "Chợ phiên vùng cao", "bản sát biên giới" và "nhà người Mông" đều bị xếp
+   * là địa danh lạ, và cả ba lượt bị chuyển tiếp OUT_OF_SCOPE trước khi truy xuất kịp chạy — trong
+   * khi tài liệu trả lời đúng nằm sẵn trong kho, một trong số đó ở độ tương đồng 0.75.
+   *
+   * Bỏ tín hiệu ấy đi KHÔNG mở cửa cho câu hỏi ngoài địa bàn: guardrail căn cứ ở cuối lượt vẫn
+   * chuyển tiếp OUT_OF_SCOPE khi truy xuất không có gì để bám vào. Chặn sớm bằng một tín hiệu do
+   * model sinh ra chỉ thêm ca từ chối nhầm, không thêm lớp bảo vệ nào mà phía sau chưa có.
    */
-  const offTopicPlace =
-    (resolved.unknown.length > 0 || outOfArea.length > 0) && placeSlugs.length === 0;
+  const offTopicPlace = outOfArea.length > 0 && placeSlugs.length === 0;
   path.push({
     node: "place_resolve", outcome: offTopicPlace ? "out_of_area" : placeSlugs.length ? "resolved" : "empty",
     detail: placeSlugs.join(","),
-    ...(offTopicPlace ? { reason: [...resolved.unknown, ...outOfArea].join(",") } : {}),
+    ...(offTopicPlace ? { reason: outOfArea.join(",") } : {}),
   });
 
-  // Trigger 1 và 3 của Mục 10.6: khách yêu cầu gặp người thật, hoặc ý định không đủ tin cậy.
+  /**
+   * ĐỘ TIN CẬY THẤP Ở MỘT LƯỢT SỬA LẠI VIỆC ĐANG LÀM DỞ KHÔNG PHẢI LÀ KHÔNG HIỂU.
+   *
+   * Đo ngày 2026-09-23 trên GS-186 và GS-200: với đúng lịch sử hội thoại của chúng, NLU trả về độ
+   * tin cậy 0,40–0,45 ở CẢ BA lần chạy, và nhãn lật qua lại giữa `support` với `itinerary`. Model
+   * không sai khi thiếu tự tin — "À cho mình thuê người lái thôi" tách khỏi ngữ cảnh thì thật sự
+   * mơ hồ. Thứ giải nghĩa nó nằm ở việc đang làm dở, không nằm trong câu.
+   *
+   * Nhưng hai câu ấy ĐƯỢC HIỂU: `extractSlots` — mã tất định, không gọi model — rút ra
+   * `travelMode: easy_rider` và `budgetLevel: luxury` từ chính chúng. Chuyển tiếp một lượt mà
+   * chính ta vừa đọc hiểu bằng regex là chuyển tiếp nhầm.
+   *
+   * Nên trigger LOW_CONFIDENCE chỉ bỏ qua khi CẢ HAI điều kiện cùng đúng: có việc đang làm dở, và
+   * lượt này tự nó cung cấp được thông tin. Thiếu một trong hai thì escalation giữ nguyên — một
+   * câu cụt không bổ sung gì vẫn là câu mà hệ thống nên nhận là mình không hiểu.
+   */
+  const amendsOngoingTask =
+    input.previousIntent !== undefined && Object.keys(extractSlots(input.message)).length > 0;
+
+  /**
+   * Trigger 1, 2 và 3 của Mục 10.6. THỨ TỰ LÀ HỢP ĐỒNG: lý do tất định đứng trước lý do do model
+   * đoán ra.
+   *
+   * `USER_REQUEST` đứng đầu vì đó là khách tự nói. `OUT_OF_SCOPE` đứng thứ hai vì nó đến từ danh
+   * sách chặn tường minh, không từ model. `LOW_CONFIDENCE` đứng cuối vì nó chỉ là model tự nhận
+   * mình không chắc — và thường thì nó không chắc CHÍNH VÌ câu hỏi ngoài địa bàn. Bản trước đặt
+   * `LOW_CONFIDENCE` trước `OUT_OF_SCOPE`, nên GS-163 ("Chợ tình Sa Pa họp vào tối nào?", độ tin
+   * cậy 0,4) được chuyển tiếp với một lý do sai: nhân viên đọc bản ghi sẽ tưởng hệ thống không
+   * hiểu câu, trong khi nó hiểu đúng và chỉ là câu hỏi về Lào Cai.
+   */
   const forcedReason: EscalationReason | null = nlu.wantsHuman
     ? "USER_REQUEST"
-    : nlu.confidence < MIN_INTENT_CONFIDENCE
-      ? "LOW_CONFIDENCE"
-      : offTopicPlace
-        ? "OUT_OF_SCOPE"
+    : offTopicPlace
+      ? "OUT_OF_SCOPE"
+      : nlu.confidence < MIN_INTENT_CONFIDENCE && !amendsOngoingTask
+        ? "LOW_CONFIDENCE"
         : null;
+
+  /**
+   * TIẾP TỤC VIỆC ĐANG LÀM khi lượt này chỉ sửa lại nó.
+   *
+   * Hai tình huống, cùng một lý do: nhãn ý định của một câu sửa ngắn không đáng tin.
+   *   - Độ tin cậy thấp (GS-186): nhãn lật qua lại giữa hai lần chạy cùng một câu.
+   *   - Nhãn `support` mà khách không xin gặp người (GS-189, "Bớt còn 4 người", độ tin cậy ≥ 0,5):
+   *     bản trước bỏ qua ca này vì chỉ xét độ tin cậy, nên lượt ấy rơi xuống nhánh "tra kho
+   *     trước" bên dưới, sang tác tử tri thức, không tìm được gì về "bớt người", rồi chuyển tiếp.
+   *
+   * KHÔNG ghi đè một nhãn tự tin khác `support`: "Đi ô tô chụp ảnh ở đâu đẹp?" sau một lượt lịch
+   * trình có slot nhưng là câu hỏi tri thức thật, và NLU nói đúng điều đó với độ tin cậy cao.
+   */
+  const labelUntrusted =
+    nlu.confidence < MIN_INTENT_CONFIDENCE || (nlu.intent === "support" && !nlu.wantsHuman);
+  if (amendsOngoingTask && labelUntrusted) {
+    agent = input.previousIntent as Intent;
+  }
 
   /**
    * Ghi lại quyết định định tuyến.
@@ -286,7 +366,29 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
     result = await deps.runSupport(context, forcedReason);
     recordAgent(agent, result);
   } else {
-    path.push({ node: "route", outcome: "agent", detail: agent });
+    /**
+     * NLU đoán `support` mà khách KHÔNG xin gặp người: thử tra kho trước khi chuyển tiếp.
+     *
+     * Tới được nhánh này nghĩa là `wantsHuman` bằng false và độ tin cậy đủ cao, nên nhãn `support`
+     * ở đây hoàn toàn là phỏng đoán về GIỌNG ĐIỆU. Mô tả ý định trong prompt gộp "khiếu nại, sự
+     * cố" vào một nhóm còn "an toàn, thủ tục" vào nhóm khác, và hai vùng đó chồng lên nhau đúng ở
+     * chỗ khách đang lo lắng. Lần chạy đánh giá ngày 2026-09-22 có bốn câu rơi vào đó, trong đó
+     * GS-116 là "Có người rơi xuống vực thì gọi số nào?" — hệ thống trả lời "vượt quá khả năng hỗ
+     * trợ tự động của tôi" trong khi tài liệu số khẩn cấp nằm ngay hạng 1.
+     *
+     * Tác tử hỗ trợ theo thiết kế KHÔNG tra kho (`tool_status = not_used`), nên một câu bị gán
+     * nhầm nhãn là một câu mất hẳn cơ hội được trả lời. Đổi lại, câu hỏi "kho có trả lời được
+     * không" đáng tin hơn hẳn câu "bộ phân loại nói gì", và ở đây nó KHÔNG tốn thêm lượt gọi nào:
+     * guardrail căn cứ ngay bên dưới đã sẵn sàng chuyển tiếp khi tác tử tri thức không bám được
+     * vào đâu. Khiếu nại thật vẫn về đúng tác tử hỗ trợ, chỉ là đi qua một cửa kiểm chứng.
+     */
+    const guessedSupport = agent === "support";
+    if (guessedSupport) agent = "knowledge";
+
+    path.push({
+      node: "route", outcome: "agent", detail: agent,
+      ...(guessedSupport ? { reason: "support_thu_tra_kho_truoc" } : {}),
+    });
     input.onEvent?.({ type: "stage", stage: "route", detail: agent });
     const missing = missingSlots(agent, slots);
     if (missing.length > 0) {
@@ -339,12 +441,40 @@ export async function handleTurn(input: TurnInput, deps: TurnDeps = PRODUCTION_D
          * và thêm một giá trị là một migration cơ sở dữ liệu. Lý do CHÍNH XÁC vẫn không mất: nó
          * nằm ở nút guardrail trong trace ngay phía trên, cùng danh sách dữ kiện không kiểm được.
          */
-        const reason: EscalationReason =
-          blocked === "insufficient" || blocked === "unsupported" ? "OUT_OF_SCOPE" : "COMPLAINT";
+        /**
+         * Lượt vừa được chuyển từ `support` sang `knowledge` ở trên thì giữ nguyên `COMPLAINT` —
+         * đúng lý do mà nó đã mang nếu không có cửa kiểm chứng đó. Không làm vậy thì mọi khiếu
+         * nại thật đều bị ghi thành OUT_OF_SCOPE và số liệu chuyển tiếp mất nghĩa.
+         */
+        const reason: EscalationReason = guessedSupport
+          ? "COMPLAINT"
+          : blocked === "insufficient" || blocked === "unsupported" ? "OUT_OF_SCOPE" : "COMPLAINT";
         const fallback = await deps.runSupport(quiet(context), reason);
         recordAgent("support", fallback);
         agent = "support";
-        result = { ...fallback, calls: [...result.calls, ...fallback.calls], retrieval: result.retrieval };
+        /**
+         * GIỮ LẠI CHỨNG CỨ ĐÃ TRUY XUẤT, DÙ CÂU TRẢ LỜI BỊ VỨT.
+         *
+         * `evidence` và `retrievedDocIds` mô tả TRUY XUẤT tìm được gì — một sự thật độc lập với
+         * việc câu trả lời dựng trên nó có qua được guardrail hay không. Bản trước thay nguyên
+         * `result` bằng kết quả của tác tử hỗ trợ, mà tác tử ấy không truy xuất gì, nên mọi lượt
+         * chuyển tiếp đều được ghi lại là truy xuất rỗng.
+         *
+         * Hậu quả là bốn chỉ số của bộ đo — tỷ lệ truy xuất rỗng, Recall@k, hit@1, MRR — bị kéo
+         * theo TỈ LỆ CHUYỂN TIẾP chứ không đo chất lượng truy xuất. Đo ngày 2026-09-23: GS-035 và
+         * GS-134 đều bị ghi `retrieved_docs: []`, trong khi chạy lại đúng câu hỏi ấy thì tài liệu
+         * kỳ vọng nằm ở HẠNG 1 của cả hai.
+         *
+         * `citedDocIds` thì KHÔNG giữ, và sự khác biệt ở đây là có chủ đích: trích dẫn là thuộc
+         * tính của câu trả lời vừa bị vứt, nên giữ lại là ghi công cho một câu không ai đọc.
+         */
+        result = {
+          ...fallback,
+          calls: [...result.calls, ...fallback.calls],
+          retrieval: result.retrieval,
+          evidence: result.evidence,
+          retrievedDocIds: result.retrievedDocIds,
+        };
       }
     }
   }

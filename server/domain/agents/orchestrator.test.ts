@@ -48,6 +48,184 @@ describe("KE-14…KE-20: đường đi thật với phụ thuộc ra ngoài đư
     expect(out.trace.path[3]).toMatchObject({ reason: "OUT_OF_SCOPE", detail: "support" });
     expect(deps.runAgent).not.toHaveBeenCalled();
   });
+  /**
+   * Mảng `destinations` của NLU chứa cả cụm danh từ chung, không riêng tên riêng. Coi mọi tên
+   * không tra được là "địa danh ngoài địa bàn" đã khiến ba kịch bản holdout bị chuyển tiếp trước
+   * khi truy xuất kịp chạy, dù tài liệu trả lời đúng nằm sẵn trong kho.
+   */
+  it("cụm danh từ chung không tra được KHÔNG phải cớ để chuyển tiếp", async () => {
+    const deps = fixture();
+    deps.resolvePlaceNames = vi.fn(async () => ({ slugs: [], unknown: ["Chợ phiên vùng cao"] }));
+    const out = await handleTurn({ ...input, message: "Chợ phiên vùng cao họp theo lịch nào?" }, deps);
+    expect(sequence(out)).toEqual([
+      "nlu:ok", "temporal:none", "place_resolve:empty", "route:agent",
+      "slot_gate:complete", "agent:ok", "guardrail:pass", "respond:ok",
+    ]);
+    expect(deps.runSupport).not.toHaveBeenCalled();
+    // Không tra được địa danh nào thì truy xuất chạy KHÔNG lọc địa danh, chứ không bỏ cuộc.
+    expect(deps.runAgent).toHaveBeenCalledWith("knowledge", expect.objectContaining({ placeSlugs: [] }));
+  });
+
+  /**
+   * Nhãn `support` khi khách không xin gặp người chỉ là phỏng đoán giọng điệu. GS-116 của bộ vàng
+   * — "Có người rơi xuống vực thì gọi số nào?" — bị gán nhãn ấy và nhận về một câu chuyển tiếp,
+   * trong khi tài liệu số khẩn cấp nằm sẵn ở hạng 1.
+   */
+  it("NLU đoán support mà khách không xin gặp người: tra kho trước, trả lời được thì trả lời", async () => {
+    const deps = fixture({ intent: "support" });
+    const out = await handleTurn({ ...input, message: "Có người rơi xuống vực thì gọi số nào?" }, deps);
+    expect(deps.runAgent).toHaveBeenCalledWith("knowledge", expect.anything());
+    expect(deps.runSupport).not.toHaveBeenCalled();
+    expect(out.trace.escalated).toBe(false);
+    expect(out.trace.path[3]).toMatchObject({ node: "route", detail: "knowledge" });
+  });
+
+  it("khiếu nại thật vẫn về tác tử hỗ trợ, và giữ đúng lý do COMPLAINT", async () => {
+    const deps = fixture(
+      { intent: "support" },
+      { ...answer, reply: "Không có căn cứ", grounding: "insufficient", citedDocIds: [], retrievedDocIds: [] },
+    );
+    const out = await handleTurn({ ...input, message: "Tôi bị trừ tiền hai lần" }, deps);
+    expect(deps.runSupport).toHaveBeenCalledWith(expect.anything(), "COMPLAINT");
+    expect(out.trace.escalated).toBe(true);
+  });
+
+  /**
+   * GS-201: khách hỏi về phố cổ Đồng Văn rồi hỏi tiếp "Ở đó ăn sáng thì nên ăn gì?". NLU mang địa
+   * danh của lượt trước sang `entities`, nên điều kiện cũ `placeSlugs.length === 0` không còn
+   * đúng và đại từ KHÔNG được thay — câu đưa đi nhúng vẫn là "Ở đó ...", không có tên nơi nào.
+   * Đo được: truy xuất khi đó trả về Cổng Trời Quản Bạ và quần áo theo mùa; ghép tên nơi vào thì
+   * ra đúng tài liệu bánh cuốn Đồng Văn.
+   */
+  it("đại từ được thay bằng tên nơi, kể cả khi NLU đã mang địa danh sang từ lượt trước", async () => {
+    const deps = fixture({ entities: { destinations: ["Phố cổ Đồng Văn"] } });
+    deps.resolvePlaceNames = vi.fn(async () => ({ slugs: ["pho-co-dong-van"], unknown: [] }));
+    // Câu chữ KHÔNG nêu nơi nào — chỉ có đại từ.
+    deps.findPlacesInText = vi.fn(async () => []);
+
+    await handleTurn({ ...input, message: "Ở đó ăn sáng thì nên ăn gì?" }, deps);
+
+    const context = (deps.runAgent as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(context.retrievalQuery).toContain("Phố cổ Đồng Văn");
+  });
+
+  it("câu tự nêu tên nơi thì KHÔNG ghép thêm, tên mới thắng", async () => {
+    const deps = fixture({ entities: { destinations: ["Mèo Vạc"] } });
+    deps.resolvePlaceNames = vi.fn(async () => ({ slugs: ["meo-vac"], unknown: [] }));
+    deps.findPlacesInText = vi.fn(async () => ["meo-vac"]);
+
+    await handleTurn({ ...input, message: "Mèo Vạc ăn sáng thì nên ăn gì?" }, deps);
+
+    const context = (deps.runAgent as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(context.retrievalQuery).toBe("Mèo Vạc ăn sáng thì nên ăn gì?");
+  });
+
+  /**
+   * GS-186 và GS-200: với đúng lịch sử của chúng, NLU trả độ tin cậy 0,40–0,45 ở cả ba lần chạy và
+   * nhãn lật giữa `support` với `itinerary`. Model không sai khi thiếu tự tin — câu tách khỏi ngữ
+   * cảnh thì thật sự mơ hồ. Nhưng `extractSlots` đọc được `travelMode: easy_rider` từ chính câu
+   * đó bằng regex, nên chuyển tiếp nó là chuyển tiếp một lượt mà ta vừa hiểu.
+   */
+  it("lượt sửa lại việc đang làm dở không bị chuyển tiếp vì độ tin cậy thấp", async () => {
+    const deps = fixture({ intent: "support", confidence: 0.4 });
+
+    const out = await handleTurn(
+      { ...input, message: "À cho mình thuê người lái thôi", previousIntent: "itinerary", slots: { days: 3 } },
+      deps,
+    );
+
+    expect(deps.runSupport).not.toHaveBeenCalled();
+    expect(out.trace.escalated).toBe(false);
+    // Tiếp tục ĐÚNG việc đang làm, không nhảy sang nhãn mà NLU vừa đoán.
+    expect(deps.runAgent).toHaveBeenCalledWith("itinerary", expect.anything());
+  });
+
+  it("câu cụt KHÔNG bổ sung gì thì vẫn chuyển tiếp như cũ", async () => {
+    const deps = fixture({ intent: "support", confidence: 0.4 });
+
+    const out = await handleTurn(
+      { ...input, message: "ừ", previousIntent: "itinerary", slots: { days: 3 } },
+      deps,
+    );
+
+    expect(out.trace.path[3]).toMatchObject({ reason: "LOW_CONFIDENCE" });
+  });
+
+  it("chưa có việc đang làm dở thì độ tin cậy thấp vẫn chuyển tiếp", async () => {
+    const deps = fixture({ intent: "support", confidence: 0.4 });
+
+    const out = await handleTurn({ ...input, message: "đi 3 ngày bằng xe máy" }, deps);
+
+    expect(out.trace.path[3]).toMatchObject({ reason: "LOW_CONFIDENCE" });
+  });
+
+  /**
+   * Chuyển tiếp vì guardrail chặn KHÔNG được xoá dấu vết truy xuất. Bốn chỉ số của bộ đo — tỷ lệ
+   * truy xuất rỗng, Recall@k, hit@1, MRR — đọc `trace.evidence`, nên mất nó là chúng đo tỉ lệ
+   * chuyển tiếp thay vì đo chất lượng truy xuất. Đo ngày 2026-09-23: GS-035 và GS-134 bị ghi
+   * truy xuất rỗng, trong khi chạy lại đúng câu hỏi thì tài liệu kỳ vọng nằm hạng 1.
+   */
+  it("guardrail chặn: vẫn giữ chứng cứ đã truy xuất, nhưng bỏ trích dẫn của câu bị vứt", async () => {
+    const blocked: AgentResult = {
+      ...answer,
+      reply: "Không có căn cứ",
+      grounding: "insufficient",
+      evidence: [{ id: "K1", kind: "knowledge", label: "Phố cổ", text: "...", sourceRef: "attraction:pho-co", docId: "doc-1" }],
+      retrievedDocIds: ["doc-1"],
+      citedDocIds: ["doc-1"],
+    };
+    const deps = fixture({}, blocked);
+
+    const out = await handleTurn(input, deps);
+
+    expect(out.trace.escalated).toBe(true);
+    expect(out.trace.retrievedDocIds).toEqual(["doc-1"]);
+    expect(out.trace.evidence).toHaveLength(1);
+    // Trích dẫn thuộc về câu trả lời vừa bị vứt, nên KHÔNG được ghi công.
+    expect(out.trace.citedDocIds).toEqual([]);
+  });
+
+  /**
+   * Lý do tất định đứng trước lý do do model đoán. GS-163 ("Chợ tình Sa Pa họp vào tối nào?", độ
+   * tin cậy 0,4) từng bị chuyển tiếp với LOW_CONFIDENCE — nhân viên đọc bản ghi sẽ tưởng hệ thống
+   * không hiểu câu, trong khi nó hiểu đúng và câu hỏi là về Lào Cai.
+   */
+  it("ngoài địa bàn và độ tin cậy thấp cùng lúc: lý do ghi là OUT_OF_SCOPE", async () => {
+    const deps = fixture({ confidence: 0.4 });
+    deps.resolvePlaceNames = vi.fn(async () => ({ slugs: [], unknown: [] }));
+
+    const out = await handleTurn({ ...input, message: "Chợ tình Sa Pa họp vào tối nào?" }, deps);
+
+    expect(out.trace.path[3]).toMatchObject({ outcome: "forced_escalation", reason: "OUT_OF_SCOPE" });
+  });
+
+  /**
+   * GS-189 ("Bớt còn 4 người"): nhãn `support` với độ tin cậy ≥ 0,5 nên quy tắc cũ — chỉ xét độ tin
+   * cậy — bỏ qua, và lượt ấy rơi sang nhánh tra kho, không tìm được gì về "bớt người", rồi bị
+   * chuyển tiếp.
+   */
+  it("nhãn support cho một lượt sửa việc đang làm dở: tiếp tục việc đó, không đi tra kho", async () => {
+    const deps = fixture({ intent: "support", confidence: 0.9 });
+
+    await handleTurn(
+      { ...input, message: "Bớt còn 4 người", previousIntent: "budget", slots: { days: 3, travelers: 5 } },
+      deps,
+    );
+
+    expect(deps.runAgent).toHaveBeenCalledWith("budget", expect.anything());
+  });
+
+  it("nhãn TỰ TIN khác support thì KHÔNG bị ghi đè bởi việc đang làm dở", async () => {
+    const deps = fixture({ intent: "knowledge", confidence: 0.9 });
+
+    await handleTurn(
+      { ...input, message: "Đi ô tô chụp ảnh ở đâu đẹp?", previousIntent: "itinerary", slots: { days: 3 } },
+      deps,
+    );
+
+    expect(deps.runAgent).toHaveBeenCalledWith("knowledge", expect.anything());
+  });
+
   it.each([
     { confidence: 0.2, wantsHuman: false, reason: "LOW_CONFIDENCE" },
     { confidence: 0.2, wantsHuman: true, reason: "USER_REQUEST" },

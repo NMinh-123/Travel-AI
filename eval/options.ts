@@ -31,7 +31,19 @@ export function parseOptions(args: string[]): EvalOptions {
     const value = args[++index];
     if (!value?.trim() || value.startsWith("--")) throw new Error(`Thiếu giá trị cho ${name}`);
     if (name === "--limit" || name === "--k") {
-      if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < 1) throw new Error(`${name} phải là số nguyên dương`);
+      /**
+       * `--limit all` chạy trọn tập đã chọn.
+       *
+       * Sinh ra vì `.github/workflows/eval.yml` gọi eval mà không truyền `--limit`, và mặc định
+       * 30 khiến lần chạy theo lịch chỉ đo 30 trên 67 kịch bản holdout rồi báo cáo như thể đã đủ.
+       * Viết `--limit 67` ở workflow thì con số đó lệch ngay khi bộ vàng dài thêm, còn một số lớn
+       * bừa như 1000 thì không ai đọc ra ý định.
+       */
+      if (name === "--limit" && value === "all") {
+        result.limit = Number.MAX_SAFE_INTEGER;
+        continue;
+      }
+      if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < 1) throw new Error(`${name} phải là số nguyên dương, hoặc "all" cho --limit`);
       result[name === "--limit" ? "limit" : "k"] = Number(value);
     } else if (name === "--ids") {
       result.ids = value.split(",");

@@ -18,9 +18,11 @@ Chỉ bind 127.0.0.1. Dịch vụ này không có xác thực, nên nó không �
 from __future__ import annotations
 
 import os
+import threading
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
@@ -56,6 +58,34 @@ def get_reranker() -> Any:
 
         _reranker = CrossEncoder(RERANK_MODEL, device=DEVICE)
     return _reranker
+
+
+# Lý do nạp lỗi, giữ lại để /ready nói được "hỏng" thay vì im lặng "chưa xong".
+_warmup_error: str | None = None
+
+
+@app.on_event("startup")
+def warm_up() -> None:
+    """Nạp model NGAY khi tiến trình lên, trong một luồng nền.
+
+    Nạp lazy giải quyết đúng một việc — tiến trình lên ngay và trả lời được trong lúc BGE-M3
+    (khoảng 2,2GB) còn đang tải — nhưng nó đẩy cái giá ấy sang NGƯỜI DÙNG ĐẦU TIÊN. Đo ngày
+    2026-09-23: lượt embed đầu tốn khoảng 12,5 giây, lượt sau 71ms. Sau mỗi lần triển khai, đúng
+    một người khách lãnh trọn 12 giây đó, và đó là người khách đang hỏi đường giữa đèo.
+
+    Luồng nền chứ không nạp thẳng trong hàm khởi động: nạp thẳng thì uvicorn không mở cổng cho
+    tới khi xong, và một model tải hỏng sẽ thành một tiến trình treo im lặng không ai hỏi được —
+    đúng thứ mà ghi chú nạp lazy ở trên đã cố tránh.
+    """
+
+    def load() -> None:
+        global _warmup_error
+        try:
+            get_embedder()
+        except Exception as error:  # noqa: BLE001 — ghi lại mọi lý do để /ready nói được
+            _warmup_error = f"{type(error).__name__}: {error}"
+
+    threading.Thread(target=load, name="warm-up-embedder", daemon=True).start()
 
 
 class EmbedRequest(BaseModel):
@@ -98,6 +128,25 @@ def health() -> dict[str, Any]:
         "device": DEVICE,
         "dim": EMBEDDING_DIM,
     }
+
+
+@app.get("/ready")
+def ready() -> JSONResponse:
+    """Readiness cho load balancer: 200 chỉ khi model đã nạp xong, 503 khi chưa.
+
+    Tách khỏi /health vì hai câu hỏi khác nhau. /health hỏi "tiến trình còn sống không" và phải
+    trả lời được cả lúc đang tải; /ready hỏi "thả traffic vào được chưa". Gộp chúng lại thì một
+    probe chỉ kiểm mã 200 — tức phần lớn probe — sẽ thả khách vào đúng lúc chậm nhất.
+
+    Rerank KHÔNG tính vào điều kiện sẵn sàng: nó chỉ chạy khi RERANK_ENABLED=true ở phía Node, và
+    nạp nó luôn sẽ chặn readiness vì một model mà phần lớn triển khai không dùng tới.
+    """
+    if _embedder is not None:
+        return JSONResponse({"ready": True, "embeddingModel": EMBEDDING_MODEL})
+    return JSONResponse(
+        status_code=503,
+        content={"ready": False, "embeddingModel": EMBEDDING_MODEL, "error": _warmup_error},
+    )
 
 
 @app.post("/embed", response_model=EmbedResponse)

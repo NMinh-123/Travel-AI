@@ -21,9 +21,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Node 24, khớp `engines` trong package.json và khớp máy phát triển.
+      #
+      # Lý do là để CI chạy ĐÚNG runtime mà dự án được phát triển và kiểm thử trên đó — không phải
+      # vì Node 20 hỏng. CI từng đỏ trên Node 20 vì `--configLoader native` bắt chính Node nạp
+      # `vitest.config.ts` và `vite.config.ts`, mà Node 20 không nạp được TypeScript. Cờ đó đã bị
+      # bỏ ở 15bbde7 và từ đó CI xanh trên Node 20. Chuyển lên 24 là để hết cảnh máy phát triển
+      # và CI chạy hai phiên bản khác nhau — kiểu lệch từng giấu lỗi trên suốt một thời gian dài.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: Kiểm kiểu
@@ -67,7 +74,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: Test integration
@@ -129,7 +136,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: Cài trình duyệt

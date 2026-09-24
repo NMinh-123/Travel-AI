@@ -3,7 +3,15 @@ import { validateData, validateKnowledge, validatePlaces } from "./validate";
 import type { KnowledgeSourceDoc } from "@data/knowledge/index";
 import type { Place } from "@data/places/types";
 
-const NOW = new Date("2026-09-21T00:00:00.000Z");
+/**
+ * Đồng hồ ghim, để KD-00 chấm dữ liệu thật một cách tất định thay vì đổi kết quả theo ngày chạy.
+ *
+ * Mốc này phải DỜI LÊN mỗi khi có dữ liệu mới mang `retrievedAt` muộn hơn nó, nếu không
+ * `DOC_RETRIEVED_AT_FUTURE` sẽ báo đỏ cho chính lô dữ liệu vừa thu thập. Đừng sửa theo chiều
+ * ngược lại — hạ `retrievedAt` xuống cho vừa mốc là khai sai ngày đối chiếu nguồn, và ngày đó
+ * chính là thứ quyết định tài liệu còn hạn tin cậy hay không.
+ */
+const NOW = new Date("2026-09-23T00:00:00.000Z");
 
 const place = (patch: Partial<Place> = {}): Place => ({
   slug: "ma-pi-leng",

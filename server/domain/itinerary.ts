@@ -326,6 +326,8 @@ export const PRODUCTION_ITINERARY_DEPS: ItineraryDeps = {
       model: config.geminiModel,
       contents,
       config: {
+        // Việc nặng nhất của hệ thống: xem `geminiLongTimeoutMs` về ca GS-192 bị hạn chung cắt ngang.
+        httpOptions: { timeout: config.geminiLongTimeoutMs },
         responseMimeType: "application/json",
         responseSchema: ITINERARY_RESPONSE_SCHEMA,
         temperature: 0.6,

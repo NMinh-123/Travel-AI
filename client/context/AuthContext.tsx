@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { loadAppConfig } from '@client/lib/appConfig';
 import { apiRequest, errorMessage } from '@client/lib/api';
@@ -74,6 +74,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [savedItineraries, setSavedItineraries] = useState<SavedItinerary[]>([]);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
+  // Ý định bấm trái tim lúc chưa đăng nhập. Giữ lại để hoàn tất ngay sau khi đăng nhập —
+  // nếu không, thao tác rơi mất im lặng và khách tưởng mình đã lưu (TC-EXP-10).
+  const pendingFavouriteRef = useRef<string | null>(null);
 
   // Hỏi server: phiên hiện tại còn hiệu lực không, và đăng nhập Google có được bật không.
   useEffect(() => {
@@ -116,7 +119,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsAuthModalOpen(true);
   }, []);
 
-  const closeAuthModal = useCallback(() => setIsAuthModalOpen(false), []);
+  // Đóng hộp thoại mà không đăng nhập là huỷ ý định: giữ lại thì lần đăng nhập sau sẽ lưu
+  // một điểm khách không còn muốn.
+  const closeAuthModal = useCallback(() => {
+    pendingFavouriteRef.current = null;
+    setIsAuthModalOpen(false);
+  }, []);
+
+  /** Lưu nốt điểm đã bấm trái tim trước khi đăng nhập. Im lặng bỏ qua nếu server đã có nó. */
+  const flushPendingFavourite = useCallback(async (signedIn: UserProfile) => {
+    const destinationId = pendingFavouriteRef.current;
+    pendingFavouriteRef.current = null;
+    if (!destinationId || signedIn.favoriteDestinations.includes(destinationId)) return;
+
+    try {
+      const { user: updated } = await apiRequest<{ user: UserProfile }>(
+        `/api/me/favorites/${encodeURIComponent(destinationId)}`,
+        { method: 'PUT' }
+      );
+      setUser(updated);
+    } catch (error) {
+      console.error('Không lưu được điểm yêu thích sau khi đăng nhập:', error);
+    }
+  }, []);
 
   /** Ba đường đăng nhập chỉ khác endpoint và payload, phần còn lại dùng chung. */
   const authenticate = useCallback(
@@ -128,12 +153,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
         setUser(signedIn);
         setIsAuthModalOpen(false);
+        await flushPendingFavourite(signedIn);
         return { success: true };
       } catch (error) {
         return { success: false, error: errorMessage(error, fallback) };
       }
     },
-    []
+    [flushPendingFavourite]
   );
 
   const loginWithEmail = useCallback(
@@ -226,6 +252,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const toggleFavorite = useCallback(
     async (destinationId: string) => {
       if (!user) {
+        pendingFavouriteRef.current = destinationId;
         openAuthModal('login');
         return true;
       }

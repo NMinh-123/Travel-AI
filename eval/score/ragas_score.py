@@ -36,6 +36,29 @@ except ImportError:
 
 METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context_recall")
 
+# MỘT LƯỢT CHẤM HỎNG KHÔNG ĐƯỢC PHÉP GIẾT CẢ LẦN CHẠY.
+#
+# `InstructorLLM` đã có max_retries riêng, nhưng nó hết lượt thì ném ra ngoài và hàng đó thành
+# PROVIDER_ERROR — mà PROVIDER_ERROR thì dừng toàn bộ. Ngày 2026-09-22, đúng chuyện đó đã xảy ra
+# ở GS-098: cả lần chạy 282 lượt gọi model sinh bị vứt đi mà không có nổi một điểm nào, trong khi
+# chấm lại chính hàng ấy ngay sau đó thì thành công ở CẢ BA model thử — tức lỗi chập chờn ở điểm
+# cuối, không phải dữ liệu hỏng.
+#
+# Thử lại ở mức HÀNG, không phải ở mức lượt gọi: hết lượt của instructor nghĩa là phiên trao đổi
+# đó đã hỏng hẳn, nên thứ cần làm là bắt đầu lại từ đầu với một request mới. Chờ tăng dần để nếu
+# điểm cuối đang quá tải thì lần thử sau không rơi vào đúng lúc đó.
+#
+# Vẫn KHÔNG có điểm thay thế: hết ba lần thì hàng đó làm hỏng cả lần chạy đúng như trước. Thứ
+# thay đổi ở đây là ngưỡng chịu đựng với một lỗi tạm thời, không phải nguyên tắc không bịa điểm.
+#
+# Ba lượt vẫn chưa đủ. Ngày 2026-09-22, sau khi đã nâng lên ba, một lần chạy nữa chết ở GS-038 —
+# ba lượt cách nhau 3, 6 rồi 9 giây gói gọn trong 18 giây, tức vẫn nằm trọn trong một đợt quá tải.
+# Bộ chấm chạy theo lô và KHÔNG có ai ngồi chờ, khác hẳn một lượt chat, nên ngưỡng chịu đựng ở đây
+# không có lý do gì phải chặt: sáu lượt trải ra 63 giây vẫn rẻ hơn nhiều so với việc vứt đi một
+# giờ chấm và phải đo lại từ đầu.
+PROVIDER_ATTEMPTS = 6
+PROVIDER_BACKOFF_S = 3
+
 
 class Sample(TypedDict):
     id: str
@@ -111,18 +134,22 @@ async def score_rows(rows: list[Sample], llm: InstructorLLM, embeddings: Sidecar
         if not row["ragas"]:
             output.append({"id": row["id"], "scored": False, "scores": None})
             continue
-        try:
-            measurements = [
-                await faithfulness.ascore(row["question"], row["answer"], row["contexts"]),
-                await relevancy.ascore(row["question"], row["answer"]),
-                await precision.ascore(row["question"], row["reference"], row["contexts"]),
-                await recall.ascore(row["question"], row["contexts"], row["reference"]),
-            ]
-            scores = {key: checked_score(metric.value, row["id"]) for key, metric in zip(METRICS, measurements)}
-        except ScoreFailure:
-            raise
-        except Exception as error:
-            raise ScoreFailure("PROVIDER_ERROR", row["id"]) from error
+        for attempt in range(PROVIDER_ATTEMPTS):
+            try:
+                measurements = [
+                    await faithfulness.ascore(row["question"], row["answer"], row["contexts"]),
+                    await relevancy.ascore(row["question"], row["answer"]),
+                    await precision.ascore(row["question"], row["reference"], row["contexts"]),
+                    await recall.ascore(row["question"], row["contexts"], row["reference"]),
+                ]
+                scores = {key: checked_score(metric.value, row["id"]) for key, metric in zip(METRICS, measurements)}
+                break
+            except ScoreFailure:
+                raise
+            except Exception as error:
+                if attempt == PROVIDER_ATTEMPTS - 1:
+                    raise ScoreFailure("PROVIDER_ERROR", row["id"]) from error
+                await asyncio.sleep(PROVIDER_BACKOFF_S * (attempt + 1))
         values.append(scores)
         output.append({"id": row["id"], "scored": True, "scores": scores})
     if not values:

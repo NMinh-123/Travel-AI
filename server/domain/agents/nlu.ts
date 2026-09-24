@@ -3,6 +3,7 @@ import type { Schema } from "@google/genai";
 import { generateStructured, type CallMetrics } from "@server/infra/gemini";
 import { INTENTS, type Intent, type NluResult, type Slots } from "./types";
 import { extractSlots } from "./slotExtract";
+import { normalizePlaceName } from "@data/places/normalize";
 import { sanitizeModelPhrases } from "@server/domain/temporal/phrases";
 
 /**
@@ -30,7 +31,10 @@ const NLU_SCHEMA: Schema = {
     },
     wantsHuman: {
       type: Type.BOOLEAN,
-      description: "True khi khách yêu cầu gặp nhân viên thật, hoặc đang khiếu nại/gặp sự cố khẩn.",
+      description:
+        "True khi khách yêu cầu gặp nhân viên thật, hoặc đang khiếu nại/gặp sự cố khẩn. " +
+        'Ngoại lệ: "thuê người lái", "thuê tài xế", "đi tour có hướng dẫn viên" là dịch vụ du ' +
+        "lịch khách đang chọn cho chuyến đi, không phải yêu cầu gặp nhân viên hỗ trợ.",
     },
     destinations: {
       type: Type.ARRAY,
@@ -107,6 +111,33 @@ function positive(value: unknown, max: number): number | undefined {
 export interface NluOutcome {
   result: NluResult;
   metrics: CallMetrics;
+}
+
+/**
+ * KHÁCH ĐÒI GẶP NGƯỜI — đọc tất định, thay cho `wantsHuman` của model.
+ *
+ * Model bật trường này sai theo CẢ HAI chiều, đo ngày 2026-09-23 trên bộ holdout:
+ *   - Bỏ sót: "Cho tôi nói chuyện với nhân viên tư vấn thật." (GS-171) và "Đoàn tôi đang mắc kẹt
+ *     vì sạt lở, cần hỗ trợ khẩn cấp." (GS-174) đều ra `false`. Lượt đầu bị chuyển với lý do sai;
+ *     lượt sau được trả lời bằng một đoạn tri thức về sạt lở thay vì được đưa tới câu chuyển tiếp
+ *     có số cứu hộ 113/115/114.
+ *   - Bật nhầm: "À cho mình thuê người lái thôi" (GS-186) ra `true`, dù mô tả trường trong lược đồ
+ *     ĐÃ ghi rõ thuê tài xế không phải xin gặp nhân viên. Model phớt lờ một chỉ dẫn tường minh.
+ */
+const HUMAN_REQUEST = new RegExp(
+  [
+    String.raw`(noi|tro)\s*chuyen\s*(voi|cung)\s*(nhan\s*vien|nguoi\s*that|tu\s*van\s*vien|admin)`,
+    String.raw`gap\s*(nhan\s*vien|nguoi\s*(that|phu\s*trach)|tu\s*van\s*vien|quan\s*ly)`,
+    String.raw`can\s*(co\s*)?nguoi\s*(xu\s*ly|giai\s*quyet)`,
+    String.raw`(nhan\s*vien|tu\s*van\s*vien)\s*(tu\s*van\s*)?(that|con\s*nguoi)`,
+    String.raw`(can|xin)\s*(ho\s*tro|giup\s*do?|cuu)\s*(khan\s*cap|gap)`,
+    String.raw`mac\s*ket`,
+    String.raw`cuu\s*(voi|toi|minh|chung\s*toi)`,
+  ].join("|"),
+);
+
+export function asksForHuman(message: string): boolean {
+  return HUMAN_REQUEST.test(normalizePlaceName(message));
 }
 
 export async function classify(
@@ -208,7 +239,19 @@ export async function classify(
     : 0;
 
   return {
-    result: { intent, confidence, entities, temporalPhrases, wantsHuman: data.wantsHuman === true },
+    result: {
+      intent, confidence, entities, temporalPhrases,
+      /**
+       * CHỈ phép đọc tất định quyết định, `wantsHuman` của model bị bỏ qua.
+       *
+       * Trước đây model được bật cờ tự do vì bật thừa chỉ tốn một lượt chuyển cho nhân viên. Nay
+       * chưa có CSKH, bật thừa nghĩa là khách mất câu trả lời: holdout ngày 2026-09-24 có bốn câu
+       * model bật nhầm (GS-116 "rơi xuống vực thì gọi số nào", GS-143 hoàn tiền, GS-168 Ninh Bình,
+       * GS-177 phương trình) và cả bốn bị chặn với lý do USER_REQUEST. Model vẫn điền trường này
+       * trong lược đồ vì mô tả của nó giúp phân loại ý định `support`.
+       */
+      wantsHuman: asksForHuman(message),
+    },
     metrics,
   };
 }

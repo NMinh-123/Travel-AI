@@ -20,3 +20,32 @@ describe("KT-24…KT-31: slot tất định", () => {
     expect(extractSlots(message)).not.toHaveProperty("month");
   });
 });
+
+/**
+ * Khách đổi hạng giữa chừng thường dùng lối SO SÁNH NHẤT thay vì gọi lại tên mức. GS-200 của bộ
+ * vàng là đúng ca đó: "Mình muốn đi kiểu tiết kiệm thôi" rồi "Thôi đổi sang loại tốt nhất đi" —
+ * câu sau không chứa từ nào trong bảng cũ nên slot kẹt ở `backpacker`, và tác tử ngân sách tính
+ * lại theo đúng mức khách vừa bỏ.
+ */
+describe("đổi hạng ngân sách bằng lối so sánh nhất", () => {
+  it.each<[string, Slots]>([
+    ["Thôi đổi sang loại tốt nhất đi", { budgetLevel: "luxury" }],
+    ["cho mình loại xịn nhất", { budgetLevel: "luxury" }],
+    ["chọn chỗ đẹp nhất", { budgetLevel: "luxury" }],
+    ["cho mình chỗ rẻ nhất", { budgetLevel: "backpacker" }],
+  ])("%s", (message, expected) => {
+    expect(extractSlots(message)).toEqual(expected);
+  });
+
+  /**
+   * "tốt" đứng một mình là hỏi ý kiến, không phải lệnh đổi hạng — nên mẫu neo vào "nhất". Thiếu
+   * cái neo đó thì mọi câu khen chê đều lặng lẽ ghi đè ngân sách của khách.
+   */
+  it.each([
+    "chỗ nào tốt để ngắm hoàng hôn?",
+    "đường đó có tốt không",
+    "quán này ngon không",
+  ])("KHÔNG đổi hạng: %s", (message) => {
+    expect(extractSlots(message)).not.toHaveProperty("budgetLevel");
+  });
+});

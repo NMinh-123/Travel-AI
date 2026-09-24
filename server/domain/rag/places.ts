@@ -101,6 +101,24 @@ interface Candidate {
   aliasLength: number;
 }
 
+/**
+ * Khớp tại `end` có bị một địa danh NGOÀI địa bàn bổ nghĩa ngay sau nó không.
+ *
+ * Nhiều alias là DANH TỪ CHUNG — "chợ tình" là alias của Chợ tình Khâu Vai, "chợ phiên" của vài
+ * phiên chợ trong tỉnh. Khớp chuỗi con thì câu "Chợ tình Sa Pa họp vào tối nào?" ra Khâu Vai,
+ * một địa danh trong địa bàn, và cả lượt được coi là hợp lệ: đo ngày 2026-09-23 trên GS-163, câu
+ * ấy không bị nhận là ngoài địa bàn mà rơi vào LOW_CONFIDENCE. Nhưng "Sa Pa" đứng ngay sau đang
+ * nói RÕ chợ tình nào — khách hỏi về Lào Cai, không hỏi về Khâu Vai.
+ *
+ * Chỉ xét địa danh đứng NGAY SAU khớp, không xét cả câu. "Đi từ Hà Nội lên Đồng Văn" nhắc một nơi
+ * ngoài địa bàn nhưng vẫn là câu hợp lệ — xem `offTopicPlace` trong orchestrator — và nó vẫn đúng
+ * ở đây vì "Hà Nội" không đứng sau "Đồng Văn".
+ */
+export function qualifiedByOutOfArea(text: string, end: number): boolean {
+  const after = `${text.slice(end)} `;
+  return OUT_OF_AREA_PLACES.some((name) => after.startsWith(` ${name} `));
+}
+
 function bestMatch(entries: PlaceEntry[], needle: string): Candidate | null {
   let best: Candidate | null = null;
 
@@ -108,8 +126,10 @@ function bestMatch(entries: PlaceEntry[], needle: string): Candidate | null {
     for (const alias of entry.needles) {
       let tier: number;
       if (alias === needle) tier = 0;
-      else if (needle.includes(alias)) tier = 1;
-      else if (alias.includes(needle)) tier = 2;
+      else if (needle.includes(alias)) {
+        if (qualifiedByOutOfArea(needle, needle.indexOf(alias) + alias.length)) continue;
+        tier = 1;
+      } else if (alias.includes(needle)) tier = 2;
       else continue;
 
       // Trong bậc 1 alias dài thắng, trong bậc 2 alias ngắn thắng. Bậc 0 chỉ có một cách khớp.
@@ -169,6 +189,7 @@ export async function findPlacesInText(text: string): Promise<string[]> {
     for (const alias of entry.needles) {
       const start = haystack.indexOf(alias);
       if (start === -1) continue;
+      if (qualifiedByOutOfArea(haystack, start + alias.length)) continue;
       spans.push({ slug: entry.slug, start, end: start + alias.length });
       // `needles` đã xếp dài trước ngắn sau, nên khớp đầu tiên trong một entry là khớp dài nhất.
       break;

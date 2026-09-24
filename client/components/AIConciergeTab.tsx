@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage } from '@shared/types';
 import {
-  Sparkles, Send, User, RefreshCw, Copy, Check, LifeBuoy, ThumbsUp, ThumbsDown,
+  Sparkles, Send, User, RefreshCw, Copy, Check, ThumbsUp, ThumbsDown,
   ShieldAlert, CloudSun, Route, Bed, MessageSquarePlus
 } from 'lucide-react';
 import { MarkdownMessage, StreamingCursor } from './MarkdownMessage';
@@ -63,7 +63,7 @@ interface AIConciergeTabProps {
 }
 
 export const AIConciergeTab: React.FC<AIConciergeTabProps> = ({ initialPrompt = '' }) => {
-  const { messages, isLoading, stageLabel, isRestoring, escalated, satisfaction, send, rate, reset,
+  const { messages, isLoading, stageLabel, isRestoring, satisfaction, send, rate, reset,
     sessions, activeSessionId, historyLoading, historyError, sessionError, hasMoreHistory,
     loadHistory, openSession } =
     useChatSession(GREETING);
@@ -328,25 +328,6 @@ export const AIConciergeTab: React.FC<AIConciergeTabProps> = ({ initialPrompt = 
 
           <div ref={chatEndRef} />
         </div>
-
-        {/* Chuyển tiếp nhân viên (FR-BOT-08). Cố tình KHÔNG hứa thời gian phản hồi: hệ thống
-            chưa có vai trò CSKH nào đọc hàng đợi này. Cùng nguyên tắc với Footer — không để giao
-            diện hứa một thứ hệ thống không thực hiện được. */}
-        {escalated && (
-          <div className="mx-4 sm:mx-6 mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
-            <div className="flex items-start gap-3">
-              <LifeBuoy className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-              <div className="text-sm text-amber-900">
-                <p className="font-semibold mb-1">Đã ghi nhận để nhân viên hỗ trợ xem lại</p>
-                <p className="leading-relaxed">
-                  Nội dung trao đổi của bạn đã được lưu kèm ngữ cảnh đầy đủ. Bộ phận hỗ trợ trực
-                  tiếp đang trong quá trình xây dựng nên chưa có mốc thời gian phản hồi.{' '}
-                  <strong>Nếu là tình huống khẩn trên đường đèo</strong>, gọi ngay 113, 115 hoặc 114.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Thu thập phản hồi sau phiên hỗ trợ (FR-BOT-11) */}
         {messages.length > 2 && (

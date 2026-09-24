@@ -46,13 +46,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
+        with: { node-version: 24, cache: npm }
       - uses: actions/setup-python@v5
         with: { python-version: "3.11", cache: pip }
       - run: npm ci
+      # `prisma migrate deploy`, KHÔNG phải `db push`. Extension `vector`, `unaccent` và cấu hình
+      # tìm kiếm `vietnamese` được tạo trong migration 20260906000000_chat_and_knowledge, còn
+      # `db push` chỉ đồng bộ lược đồ và không chạy migration nào — nên trên một database rỗng nó
+      # dừng ngay với `type "vector" does not exist`. Tái hiện được, và đó chính là lý do job này
+      # chưa từng chạy nổi. Tầng integration đã bootstrap bằng migrate deploy từ trước.
       - name: Dựng lược đồ và nạp dữ liệu
         run: |
-          npx prisma db push --skip-generate
+          npx prisma migrate deploy
           npx tsx db/seed.ts
       - name: Khởi động sidecar embedding
         run: |
@@ -66,7 +71,7 @@ jobs:
           python -m venv eval/.venv
           eval/.venv/bin/python -m pip install -r eval/score/requirements.txt
       - name: Chạy đánh giá
-        run: npm run eval -- --split ${{ inputs.split || 'holdout' }}
+        run: npm run eval -- --split ${{ inputs.split || 'holdout' }} --limit all
       - uses: actions/upload-artifact@v4
         if: always()
         with:

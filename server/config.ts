@@ -116,8 +116,8 @@ function readEmbedder(): EmbedderKind {
  * .../v1/v1beta/models/... và trả 404. Hàm này cắt bỏ hậu tố đó thay vì bắt người dùng nhớ, và
  * dừng server ngay khi giá trị không phải URL http(s) — cùng nguyên tắc đã áp cho PORT.
  */
-function readGeminiBaseUrl(): string {
-  const raw = process.env.GEMINI_BASE_URL?.trim();
+function readGeminiBaseUrl(raw: string | undefined): string {
+  raw = raw?.trim();
   if (!raw) return "";
 
   let parsed: URL;
@@ -134,6 +134,48 @@ function readGeminiBaseUrl(): string {
 
   const path = parsed.pathname.replace(/\/+$/, "").replace(/\/(v1|v1beta|v1beta1)$/, "");
   return `${parsed.origin}${path}`;
+}
+
+/** Tách một biến môi trường dạng danh sách ngăn bằng dấu phẩy, bỏ mục rỗng. */
+function readList(name: string): string[] {
+  return (process.env[name] ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+/**
+ * CHUỖI ĐIỂM CUỐI CHẠY LUÂN PHIÊN.
+ *
+ * `GEMINI_API_KEY` và `GEMINI_BASE_URL` nhận danh sách ngăn bằng dấu phẩy. Một giá trị thì mọi
+ * thứ chạy y như trước, nên cấu hình cũ không phải sửa gì.
+ *
+ * VÌ SAO CẦN NHIỀU ĐIỂM CUỐI. Đo ngày 2026-09-23 trên điểm cuối đang dùng: gửi ĐÚNG một câu hỏi
+ * năm lần liên tiếp thì hai lần trả lời được và ba lần hỏng, với mã 400 "Yêu cầu không hợp lệ"
+ * cho chính request mà lần trước nó đã nhận. Một mã 400 theo đúng nghĩa thì không đáng thử lại —
+ * nhưng khi có nhiều điểm cuối, gửi lại request ấy sang điểm cuối khác chính là phép kiểm chứng:
+ * request sai thật sẽ hỏng ở MỌI điểm cuối, còn proxy nói dối thì lần sau đi lọt.
+ *
+ * Số URL ít hơn số khoá thì URL cuối dùng chung cho phần còn lại — trường hợp thường gặp là
+ * nhiều khoá trên cùng một proxy. Nhiều URL hơn khoá là cấu hình sai và bị chặn ngay ở đây.
+ */
+function readGeminiEndpoints(): { apiKey: string; baseUrl: string }[] {
+  const keys = readList("GEMINI_API_KEY");
+  const urls = readList("GEMINI_BASE_URL").map((raw) => readGeminiBaseUrl(raw));
+
+  if (urls.length > keys.length) {
+    throw new Error(
+      `GEMINI_BASE_URL có ${urls.length} địa chỉ nhưng GEMINI_API_KEY chỉ có ${keys.length} khoá; ` +
+        "mỗi địa chỉ cần một khoá đi kèm.",
+    );
+  }
+
+  return keys.map((apiKey, index) => ({
+    apiKey,
+    // Ít URL hơn khoá: lấy URL cuối cùng cho phần còn lại. Không có URL nào thì để rỗng và SDK
+    // dùng điểm cuối chính thức của Google.
+    baseUrl: urls.length === 0 ? "" : (urls[index] ?? urls[urls.length - 1]),
+  }));
 }
 
 /**
@@ -280,16 +322,71 @@ export const config = {
    * đã xác nhận không còn vi phạm nào.
    */
   cspReportOnly: readBool("CSP_REPORT_ONLY", false),
-  geminiApiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
-  geminiBaseUrl: readGeminiBaseUrl(),
+  /**
+   * Danh sách điểm cuối chạy luân phiên. Xem `readGeminiEndpoints`.
+   *
+   * `geminiApiKey` và `geminiBaseUrl` giữ lại là điểm cuối ĐẦU TIÊN, cho những nơi chỉ xử lý
+   * được một giá trị — chủ yếu là biến môi trường truyền sang bộ chấm Python.
+   */
+  geminiEndpoints: readGeminiEndpoints(),
+  geminiApiKey: readList("GEMINI_API_KEY")[0] ?? "",
+  geminiBaseUrl: readGeminiEndpoints()[0]?.baseUrl ?? "",
+  /**
+   * Hạn thời gian cho MỘT lượt gọi model, mili giây.
+   *
+   * Trước đây không đặt gì cả, và đó là lý do một lượt chat treo 294 giây trong lượt chạy tay
+   * ngày 2026-09-23 — khách ngồi nhìn khung trống gần năm phút rồi mới nhận được lỗi. Có hạn thì
+   * một điểm cuối treo sẽ bị cắt và lượt gọi chuyển sang điểm cuối kế tiếp, nên chính con số này
+   * mới là thứ chặn đuôi p95, chứ không phải số lượng điểm cuối.
+   *
+   * Mặc định 30 giây, và con số này phải đọc CÙNG với số điểm cuối. Đo ngày 2026-09-23 với ba
+   * điểm cuối và hạn 60 giây: ba ca hỏng mất 145–182 giây mỗi ca, vì mỗi lần thử đều treo đủ 60
+   * giây rồi mới chuyển tiếp. Hạn càng rộng thì chuyển tiếp càng đắt — thời gian khách chờ là
+   * TÍCH của hạn và số lần thử, không phải một trong hai.
+   *
+   * 30 giây vẫn nằm trên mọi lượt gọi hợp lệ đo được (nhanh nhất ~1,7 giây, chậm nhất ~25 giây),
+   * nên nó cắt phần treo chứ không cắt nhầm câu trả lời đang sinh dở.
+   */
+  geminiTimeoutMs: readNumber("GEMINI_TIMEOUT_MS", 30_000, 1_000, 600_000),
+  /**
+   * Hạn thời gian cho lượt gọi NẶNG: sinh lịch trình nhiều ngày, và lượt thử cuối trên model dự
+   * phòng. Mặc định 120 giây.
+   *
+   * Tách khỏi `geminiTimeoutMs` vì hai con số canh hai thứ khác nhau. Hạn 30 giây sinh ra để một
+   * lượt chat treo không bắt khách chờ năm phút — và nó làm đúng việc đó. Nhưng nó cắt luôn cả
+   * việc sinh lịch trình hợp lệ: đo ngày 2026-09-23, GS-192 ("Mình đi 3 ngày") chết với
+   * `AbortError` ở tác tử lịch trình, và log ghi ba lần như vậy trong một lượt chạy. Nâng hạn
+   * chung lên thì mất lại chính cái chặn đuôi đã đạt được, nên hạn được đặt theo LOẠI VIỆC.
+   */
+  geminiLongTimeoutMs: readNumber("GEMINI_LONG_TIMEOUT_MS", 120_000, 1_000, 600_000),
+  /**
+   * Model dùng từ LƯỢT THỬ LẠI THỨ HAI khi model tầng hiện tại cứ trả văn xuôi thay vì JSON.
+   *
+   * Đo ngày 2026-09-23: 6 trên 10 ca từ chối nhầm đều chạm trần thử lại (5–9 lần) với
+   * `gemini-2.5-flash-lite` ở lược đồ câu trả lời `[reply,suggestions,citations]`. Khi hết lượt,
+   * `recoverProseReply` cứu được câu chữ nhưng mất trích dẫn, guardrail đọc ra "không có căn cứ"
+   * rồi chuyển tiếp — dù truy xuất đã tìm đúng tài liệu. Leo tầng từ lượt thử lại thứ hai giữ phần lớn lượt
+   * gọi trên model rẻ, còn lượt đã hỏng nhiều lần thì được một model tuân lược đồ tốt hơn.
+   * Để trống thì tắt hẳn việc leo tầng.
+   */
+  geminiModelFallback: process.env.GEMINI_MODEL_FALLBACK?.trim() ?? "gemini-2.5-pro",
   geminiModel: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash",
   /**
    * Tầng nhẹ theo SRS Mục 11.4.5: phân loại ý định, trích xuất thực thể, trả lời FAQ ngắn —
    * khoảng 70% lượt gọi. Phân tầng không chỉ để giảm chi phí mà còn giảm độ trễ trung bình,
    * giúp giữ ngưỡng ≤ 3 giây của NFR-PERF-03 dễ hơn.
    */
+  /**
+   * Mặc định `gemini-2.5-flash` — tức CÙNG model với tầng mạnh, và điều đó là có chủ ý.
+   *
+   * Proxy đang dùng phục vụ các bản lite lúc được lúc không, và hỏng theo đợt: `gemini-3.1-flash-lite`
+   * ngày 2026-09-22, rồi `gemini-2.5-flash-lite` ngày 2026-09-24 — lượt NLU thật chỉ đạt 1/8 (400 và
+   * treo) trong khi `gemini-2.5-flash` đạt 8/8 cùng thời điểm. Một lượt NLU hỏng là cả lượt hội
+   * thoại hỏng, vì NLU chạy trước mọi thứ khác. Phân tầng theo SRS 11.4.5 vẫn giữ được bằng cách
+   * đặt biến này khi có một model nhẹ chạy ổn định; đổi thì đo lại theo hướng dẫn ở .env.example.
+   */
   geminiModelLight:
-    process.env.GEMINI_MODEL_LIGHT?.trim() || "gemini-2.5-flash-lite",
+    process.env.GEMINI_MODEL_LIGHT?.trim() || "gemini-2.5-flash",
   databaseUrl,
   jwtSecret: readJwtSecret(),
   /**
@@ -415,7 +512,31 @@ export const config = {
    * thì lại phải đo lại — đó là lý do hai giá trị này là biến môi trường chứ không phải hằng số.
    * Đặt cả hai về 0 là tắt lọc.
    */
-  ragMinVectorSimilarity: readNumber("RAG_MIN_VECTOR_SIMILARITY", 0.6, 0, 1),
+  /**
+   * ĐÃ ĐO LẠI NGÀY 2026-09-23, hạ từ 0,6 xuống 0,55.
+   *
+   * Hai con số này vốn đo trên kho 31 đoạn; kho nay có 167, và chính `db:ingest` cảnh báo mỗi lần
+   * chạy rằng chúng phải được đo lại. Quét bằng `scripts/retrieval-ablation.ts --split dev` —
+   * dev chứ không phải holdout, đúng quy ước vặn tham số:
+   *
+   *   min-vector   Recall@5   MRR     hit@1    truy xuất rỗng   p50
+   *   0,45         1,0000     0,9500  0,9000   0,0000           99ms
+   *   0,50         1,0000     0,9750  0,9500   0,0000           99ms
+   *   0,55         1,0000     0,9750  0,9500   0,0000           101ms
+   *   0,60 (cũ)    0,9500     0,9250  0,9000   0,0250           97ms
+   *
+   * 0,55 tốt hơn 0,60 ở MỌI luật đang được canh, với độ trễ y hệt. So với 0,50 thì hai mức cho
+   * kết quả trùng nhau ở các luật ấy, nhưng 0,55 kéo theo ít đoạn không liên quan hơn vào ngữ
+   * cảnh — thứ vừa tốn token vừa cho model thêm cơ hội bám nhầm.
+   */
+  ragMinVectorSimilarity: readNumber("RAG_MIN_VECTOR_SIMILARITY", 0.55, 0, 1),
+  /**
+   * GIỮ 0,35 sau khi đo lại cùng ngày, và lý do giữ đáng ghi lại. Nâng lên 0,45 cho các chỉ số
+   * của nhánh lai y hệt 0,35 mà Precision còn đẹp hơn — nhưng nó làm sụp nhánh CHẠY SUY GIẢM:
+   * riêng nhánh từ khoá, Recall@5 rơi từ 0,7250 xuống 0,2250 và truy xuất rỗng vọt lên 0,7500.
+   * Đó đúng là cấu hình chạy khi sidecar embedding chết, nên tối ưu con số ở trạng thái khoẻ
+   * bằng cách bỏ rơi trạng thái hỏng là một đánh đổi tồi.
+   */
   ragMinKeywordRank: readNumber("RAG_MIN_KEYWORD_RANK", 0.35, 0, 1),
 
   /**
@@ -451,7 +572,7 @@ export const config = {
 };
 
 export function hasGeminiCredentials(): boolean {
-  return config.geminiApiKey.length > 0;
+  return config.geminiEndpoints.length > 0;
 }
 
 export function hasGoogleCredentials(): boolean {

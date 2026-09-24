@@ -63,6 +63,74 @@ class ScoreTests(unittest.IsolatedAsyncioTestCase):
             client.close()
             await transport.aclose()
 
+    async def test_provider_flake_is_retried_instead_of_killing_the_run(self) -> None:
+        """Điểm cuối chập chờn ở một hàng không được vứt bỏ cả lần chạy — xem PROVIDER_ATTEMPTS."""
+        replies = [
+            {"statements": ["Bánh cuốn ăn với nước xương."]},
+            {"statements": [{"statement": "Bánh cuốn ăn với nước xương.", "reason": "Có nguồn", "verdict": 1}]},
+            *[{"question": "Bánh cuốn chấm gì?", "noncommittal": 0}] * 3,
+            {"reason": "Có nguồn", "verdict": 1},
+            {"classifications": [{"statement": "Bánh cuốn ăn với nước xương.", "reason": "Có nguồn", "attributed": 1}]},
+        ]
+        # Một lượt 503 là đủ làm hỏng lần thử thứ nhất của HÀNG: `max_retries` của InstructorLLM
+        # chỉ thử lại khi phản hồi sai kiểu, không thử lại lỗi HTTP của điểm cuối.
+        failures = 1
+        seen: list[str] = []
+
+        async def model_response(request: httpx.Request) -> httpx.Response:
+            nonlocal failures
+            seen.append(str(request.url))
+            if failures:
+                failures -= 1
+                return httpx.Response(503, json={"error": {"message": "fixture: điểm cuối chập chờn"}})
+            return httpx.Response(200, json={"candidates": [{"content": {"role": "model", "parts": [{"text": json.dumps(replies.pop(0))}]}, "finishReason": "STOP"}]})
+
+        async def embed_response(_self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:
+            return httpx.Response(200, request=httpx.Request("POST", url), json={"vectors": [[1.0] + [0.0] * 1023]})
+
+        transport = httpx.AsyncClient(transport=httpx.MockTransport(model_response))
+        client = genai.Client(api_key="fixture-only", http_options=types.HttpOptions(base_url="https://fixture.invalid", httpx_async_client=transport))
+        try:
+            llm = create_llm(client, "fixture-model")
+            sample = Sample(id="GS-001", question="Bánh cuốn chấm gì?", answer="Bánh cuốn ăn với nước xương.",
+                            reference="Bánh cuốn ăn với nước xương.", contexts=["Bánh cuốn ăn với nước xương."], ragas=True)
+            with patch.object(httpx.AsyncClient, "post", embed_response), patch("ragas_score.PROVIDER_BACKOFF_S", 0):
+                scores = await score_rows([sample], llm, SidecarEmbeddings("http://sidecar.invalid"))
+            self.assertTrue(scores["rows"][0]["scored"])
+            self.assertFalse(replies)
+            # Lần thử thứ nhất đã tiêu một request lỗi, nên tổng số request phải nhiều hơn số
+            # lượt gọi của một hàng chạy suôn sẻ; không có retry ở mức hàng thì không có điểm nào.
+            self.assertGreater(len(seen), 7)
+        finally:
+            await client.aio.aclose()
+            client.close()
+            await transport.aclose()
+
+    async def test_provider_down_still_fails_without_inventing_scores(self) -> None:
+        """Hết lượt thử thì vẫn hỏng — nới ngưỡng chịu đựng, không nới nguyên tắc."""
+
+        async def always_down(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, json={"error": {"message": "fixture: điểm cuối chết hẳn"}})
+
+        async def embed_response(_self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:
+            return httpx.Response(200, request=httpx.Request("POST", url), json={"vectors": [[1.0] + [0.0] * 1023]})
+
+        transport = httpx.AsyncClient(transport=httpx.MockTransport(always_down))
+        client = genai.Client(api_key="fixture-only", http_options=types.HttpOptions(base_url="https://fixture.invalid", httpx_async_client=transport))
+        try:
+            llm = create_llm(client, "fixture-model")
+            sample = Sample(id="GS-001", question="Câu hỏi", answer="Trả lời",
+                            reference="Nguồn", contexts=["Nguồn"], ragas=True)
+            with patch.object(httpx.AsyncClient, "post", embed_response), patch("ragas_score.PROVIDER_BACKOFF_S", 0):
+                with self.assertRaises(ScoreFailure) as caught:
+                    await score_rows([sample], llm, SidecarEmbeddings("http://sidecar.invalid"))
+            self.assertEqual(caught.exception.code, "PROVIDER_ERROR")
+            self.assertEqual(caught.exception.sample_id, "GS-001")
+        finally:
+            await client.aio.aclose()
+            client.close()
+            await transport.aclose()
+
     def test_dataset_rejects_missing_context_and_duplicate_ids(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             file = Path(directory) / "dataset.jsonl"

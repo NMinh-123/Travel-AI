@@ -66,6 +66,26 @@ describe("KQ-01: đại từ thay cho địa danh", () => {
   });
 });
 
+describe("câu nối tiếp lược chủ ngữ", () => {
+  it.each(["Nên đi buổi sáng hay buổi chiều?", "Giá vé bao nhiêu?", "Khi nào đẹp nhất?", "Có nên đi buổi tối không?"])(
+    "mang địa danh sang: %s",
+    (message) => {
+      const result = rewriteQuery({ message, carriedPlaces: ["hẻm Tu Sản"] });
+      expect(result.applied).toEqual(["ellipsis"]);
+      expect(result.resolvedPlaces).toEqual(["hẻm Tu Sản"]);
+    },
+  );
+
+  it("chữ đứng giữa câu không tính: 'giá' trong câu tự có chủ ngữ", () => {
+    const result = rewriteQuery({ message: "Homestay ở Hà Giang giá bao nhiêu?", carriedPlaces: ["Mèo Vạc"] });
+    expect(result.resolvedPlaces).toEqual([]);
+  });
+
+  it("'nênh' hay 'giáo' không bị nhận nhầm là từ mở đầu", () => {
+    expect(rewriteQuery({ message: "Giáo xứ có lễ không?", carriedPlaces: ["Mèo Vạc"] }).resolvedPlaces).toEqual([]);
+  });
+});
+
 describe("KQ-02: viết tắt và tên hay viết sai", () => {
   it("mở rộng viết tắt không thể hiểu thành gì khác", () => {
     const result = rewriteQuery({ message: "Đi HG mấy ngày là đủ?" });

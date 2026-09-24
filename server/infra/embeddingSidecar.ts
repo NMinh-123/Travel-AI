@@ -9,7 +9,7 @@ import { config } from "@server/config";
  * Vì sao thêm: quên bật sidecar là một lỗi ÂM THẦM và tốn thời gian truy. Tầng truy xuất gọi
  * `getEmbedder().embed()`, fetch tới cổng 8000 thất bại, `runKnowledge` ném lỗi, orchestrator
  * bắt được và rơi vào nhánh dự phòng `runSupport(..., "OUT_OF_SCOPE")` — nên phía khách chỉ
- * thấy "đã ghi nhận, sẽ chuyển nhân viên hỗ trợ" cho MỌI câu hỏi tri thức, kèm một bản ghi
+ * thấy "chưa có đủ thông tin" cho MỌI câu hỏi tri thức, kèm một bản ghi
  * ChatEscalation giả. Không có gì trên giao diện nói rằng đây là sự cố hạ tầng.
  *
  * Ba nguyên tắc của module này:
@@ -123,7 +123,7 @@ export async function ensureEmbeddingSidecar(): Promise<void> {
   if (!python) {
     console.warn(
       "⚠  Không tìm thấy Python của dịch vụ embedding (đã thử services/embedding/.venv/ và .venv/).\n" +
-        "   Tầng truy xuất sẽ lỗi và MỌI câu hỏi tri thức bị chuyển tiếp nhân viên.\n" +
+        "   Tầng truy xuất sẽ lỗi và MỌI câu hỏi tri thức bị báo thiếu thông tin.\n" +
         "   Cách xử lý: tạo venv rồi cài services/embedding/requirements.txt, đặt PYTHON_BIN,\n" +
         "   hoặc đặt EMBEDDER=gemini (phải chạy lại `npm run db:ingest` vì đổi không gian vector).",
     );
@@ -169,7 +169,7 @@ export async function ensureEmbeddingSidecar(): Promise<void> {
     // code 0 khi ta chủ động kill lúc thoát — không phải sự cố, đừng doạ người dùng.
     if (code !== 0 && code !== null) {
       console.warn(
-        `⚠  Dịch vụ embedding dừng với mã ${code}. Các câu hỏi tri thức sẽ bị chuyển tiếp nhân viên ` +
+        `⚠  Dịch vụ embedding dừng với mã ${code}. Các câu hỏi tri thức sẽ bị báo thiếu thông tin ` +
           "cho tới khi nó chạy lại.",
       );
     }

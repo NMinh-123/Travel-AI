@@ -17,6 +17,28 @@ const scorer = path.join(root, "eval/score/ragas_score.py");
 
 class EvalError extends Error {}
 
+/**
+ * Mô tả lỗi đủ để sửa, nhưng đã bỏ khoá đi.
+ *
+ * Bản trước ghi đúng một câu "không ghi thông điệp provider để bảo vệ bí mật". An toàn, nhưng ba
+ * lần chạy hỏng liên tiếp ngày 2026-09-22 không ai đọc ra nổi vì sao — mà mỗi lần chạy lại là hai
+ * mươi phút và ngót nghìn lượt gọi. Thứ duy nhất phải giấu là khoá API; lớp lỗi, mã HTTP và câu
+ * chữ của provider lại chính là những gì phân biệt "điểm cuối quá tải" với "gửi sai tham số".
+ * Giấu luôn cả chúng thì cổng phát hành báo đỏ mà không ai hành động được.
+ */
+function describeError(error: unknown): string {
+  const raw = error as { status?: unknown; code?: unknown; message?: unknown; cause?: { message?: unknown } } | null;
+  const parts = [(error as { constructor?: { name?: string } } | null)?.constructor?.name ?? "Error"];
+  if (raw?.status !== undefined) parts.push(`status=${String(raw.status)}`);
+  if (raw?.code !== undefined) parts.push(`code=${String(raw.code)}`);
+  const cause = raw?.cause?.message ? ` | nguyên nhân: ${String(raw.cause.message)}` : "";
+  const text = `${parts.join(" ")}: ${String(raw?.message ?? error)}${cause}`;
+  // Đọc thẳng từ môi trường: `config` được import trễ trong main() để lỗi thiếu biến báo đúng
+  // tên khoá, nên ở tầm module này chưa có nó.
+  const key = process.env.GEMINI_API_KEY?.trim();
+  return key ? text.split(key).join("***") : text;
+}
+
 /** Không chuyển stderr của SDK ra ngoài: thông điệp provider có thể chứa dữ liệu xác thực. */
 function score(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -33,11 +55,12 @@ function score(args: string[], env: NodeJS.ProcessEnv): Promise<void> {
 }
 
 const HELP = [
-  "npm run eval -- [--limit 30] [--ids GS-001,GS-002] [--split dev|holdout|all] [--k 5] [--out thư-mục-mới] [--skip-score]",
+  "npm run eval -- [--limit 30|all] [--ids GS-001,GS-002] [--split dev|holdout|all] [--k 5] [--out thư-mục-mới] [--skip-score]",
   "npm run eval -- --results eval/results/<mốc>   (offline: đọc lại dataset.jsonl + scores.json và áp cổng)",
   "",
   "Quy ước tập: vặn prompt và ngưỡng trên --split dev; --split holdout là con số báo cáo.",
   "--limit mặc định 30 nên KHÔNG chạy hết bộ vàng; lấy cách đều để vẫn chạm đủ các dạng kịch bản.",
+  "--limit all chạy trọn tập đã chọn — đây là thứ phải dùng cho con số đem báo cáo.",
   "Ngưỡng đặt qua biến môi trường (EVAL_MIN_*, EVAL_MAX_*); EVAL_GATE_OFF=<khoá,khoá> tắt hẳn một luật.",
   "EVAL_JUDGE_MODEL đặt model chấm khác model sinh; để trống thì hai bên trùng nhau và điểm bị thiên lệch tự chấm.",
 ].join("\n");
@@ -68,6 +91,19 @@ interface TurnRow {
   prompt_tokens: number;
   output_tokens: number;
   retries: number;
+  /**
+   * Từng lượt gọi model trong lượt này, theo đúng thứ tự đã gọi.
+   *
+   * `retries` ở trên là TỔNG của cả lượt, và con số gộp đó không trả lời được câu hỏi duy nhất
+   * đáng hỏi khi nửa số lượt phải gọi lại: gọi lại ở ĐÂU. Lần chạy holdout ngày 2026-09-23 có
+   * 28/53 lượt `knowledge` và 11/16 lượt `support` phải gọi lại, nhưng mỗi lượt đều gồm một lần
+   * gọi NLU cộng một lần gọi tác tử, nên không tách được phần nào thuộc về ai — tức không biết
+   * nên đổi tầng model cho tác tử hay cho bộ phân loại.
+   *
+   * Thứ tự là hợp đồng: `calls[0]` luôn là NLU (xem `trace.calls` dựng ở orchestrator), phần còn
+   * lại thuộc về tác tử đã chạy.
+   */
+  calls: { model: string; ms: number; retries: number }[];
   retrieved_docs: string[];
   cited_docs: string[];
   reply: string;
@@ -115,7 +151,7 @@ async function main(): Promise<number> {
   const selected = sample(matched, options.limit);
   if (!selected.length) throw new EvalError("Bộ lọc không chọn được kịch bản nào");
   if (selected.length < matched.length) {
-    console.warn(`Chỉ chạy ${selected.length}/${matched.length} kịch bản do --limit; con số ra KHÔNG dùng để báo cáo. Bỏ --limit để chạy đủ.`);
+    console.warn(`Chỉ chạy ${selected.length}/${matched.length} kịch bản do --limit (mặc định 30, bỏ cờ đi vẫn là 30); con số ra KHÔNG dùng để báo cáo. Chạy đủ: --limit all.`);
   }
   if (!options.skipScore && !selected.some((row) => !row.out_of_scope && row.expected_docs.length > 0)) {
     throw new EvalError("Cần ít nhất một kịch bản có expected_docs để tính RAGAS; dùng --skip-score nếu chỉ kiểm phần tất định.");
@@ -200,10 +236,16 @@ async function main(): Promise<number> {
     const saveMeta = (): Promise<void> => writeFile(path.join(out, "meta.json"), JSON.stringify(meta, null, 2) + "\n");
     await saveMeta();
 
+    // Kịch bản đang đo, để lần hỏng nói được nó chết ở đâu chứ không chỉ nói là đã chết.
+    let measuring: string | null = null;
+
     try {
+      // Lượt chat chỉ thử lại 2 lần vì có người đang chờ. Ở đây không ai chờ, mà một nhịp
+      // quá tải thoáng qua của điểm cuối lại làm hỏng trọn cả lần đo hàng trăm lượt.
+      process.env.GEMINI_MAX_RETRIES ??= "5";
       const { handleTurn } = await import("@server/domain/agents/orchestrator");
-      for (const row of selected) {
-        console.log(`Đang đo ${row.id} (${row.turns.length} lượt)`);
+      const measureOne = async (row: GoldenCase): Promise<void> => {
+        measuring = row.id;
         const rows = await runCase(row, { now: new Date(now), timestamp, handleTurn });
         const last = rows[rows.length - 1];
         /**
@@ -214,7 +256,15 @@ async function main(): Promise<number> {
          * RAGAS chấm một câu không có ngữ cảnh chỉ tạo ra một điểm 0 giả — nó không phân biệt
          * được "trả lời sai" với "không có gì để bám vào".
          */
-        const ragas = !row.out_of_scope && row.expected_docs.length > 0 && last.contexts.length > 0 && last.reply.trim().length > 0;
+        /**
+         * Lượt CHUYỂN TIẾP không vào RAGAS, và nay phải nói ra điều đó bằng một điều kiện tường
+         * minh. Trước đây nó đúng nhờ một tác dụng phụ: chuyển tiếp làm mất luôn `evidence`, nên
+         * `contexts` rỗng và phép kiểm bên dưới tự loại nó. Từ khi chứng cứ được giữ lại để bốn
+         * chỉ số truy xuất đo đúng, tác dụng phụ ấy mất — và nếu không chặn ở đây thì RAGAS sẽ
+         * chấm câu "đã ghi nhận và chuyển cho nhân viên" dựa trên mấy đoạn tri thức về đường đèo,
+         * rồi cho faithfulness thấp vì một lý do chẳng liên quan gì tới chất lượng trả lời.
+         */
+        const ragas = !row.out_of_scope && !last.escalated && row.expected_docs.length > 0 && last.contexts.length > 0 && last.reply.trim().length > 0;
         await appendFile(path.join(out, "dataset.jsonl"), JSON.stringify({
           id: row.id, kind: row.kind, group: row.group, split: row.split, variant: row.variant,
           out_of_scope: row.out_of_scope, question: row.question, reference: row.reference,
@@ -225,6 +275,52 @@ async function main(): Promise<number> {
         }) + "\n");
         meta.generation_calls = generationCalls;
         await saveMeta();
+      };
+
+      /**
+       * MỘT KỊCH BẢN HỎNG KHÔNG ĐƯỢC PHÉP VỨT ĐI CẢ LẦN ĐO.
+       *
+       * Bản trước ném ngay ở kịch bản đầu tiên gặp lỗi, và ngày 2026-09-23 một HTTP 400 của
+       * provider ở GS-028 đã kết thúc lượt chạy khi mới đo được 8 trên 67 — hai mươi phút và gần
+       * hai trăm lượt gọi model bỏ đi, trong khi 8 kịch bản đã đo xong thì vẫn đúng.
+       *
+       * Kiểu hỏng này ngẫu nhiên: đo lại đúng kịch bản ấy ngay sau đó thì nó chạy trọn. Nên gom
+       * các ca hỏng lại rồi đo LẠI MỘT LƯỢT ở cuối, thay vì dừng cả lần chạy.
+       *
+       * KHÔNG phải nới lỏng tiêu chuẩn: ca nào vẫn hỏng sau lượt hai thì lần chạy vẫn thất bại
+       * và không có phán quyết cổng nào được đưa ra — bộ dữ liệu thiếu kịch bản thì mọi con số
+       * trên nó đều vô nghĩa. Thứ đổi ở đây là không vứt phần đã làm được.
+       */
+      const failed: GoldenCase[] = [];
+      for (const [index, row] of selected.entries()) {
+        console.log(`Đang đo ${row.id} (${row.turns.length} lượt) — ${index + 1}/${selected.length}`);
+        try {
+          await measureOne(row);
+        } catch (error) {
+          failed.push(row);
+          console.warn(`  ${row.id} hỏng, để lại đo cuối lượt: ${describeError(error)}`);
+        }
+      }
+
+      if (failed.length > 0) {
+        console.log(`Đo lại ${failed.length} kịch bản đã hỏng: ${failed.map((row) => row.id).join(", ")}`);
+        const stillFailing: string[] = [];
+        for (const row of failed) {
+          console.log(`Đang đo lại ${row.id}`);
+          try {
+            await measureOne(row);
+          } catch (error) {
+            stillFailing.push(`${row.id} (${describeError(error)})`);
+          }
+        }
+        if (stillFailing.length > 0) {
+          throw new EvalError(
+            `${stillFailing.length}/${selected.length} kịch bản hỏng cả hai lượt đo, nên bộ dữ liệu ` +
+              `KHÔNG đủ để áp cổng: ${stillFailing.join("; ")}. ` +
+              `Phần đã đo nằm ở ${out}; chạy lại riêng các ca đó bằng --ids, hoặc chạy lại cả lượt.`,
+          );
+        }
+        console.log(`Đo lại xong, đủ ${selected.length} kịch bản.`);
       }
 
       const records = parseDataset(await readFile(path.join(out, "dataset.jsonl"), "utf8"));
@@ -254,7 +350,16 @@ async function main(): Promise<number> {
       return report.gate.passed ? 0 : 2;
     } catch (error) {
       meta.status = "FAIL";
-      await writeFile(path.join(out, "error.json"), JSON.stringify({ status: "FAIL", message: error instanceof EvalError ? error.message : "Đo thất bại; không ghi thông điệp provider để bảo vệ bí mật." }, null, 2));
+      /**
+       * `EvalError` đã tự mang đủ ngữ cảnh — kể cả danh sách kịch bản hỏng sau hai lượt đo — nên
+       * gắn thêm "Hỏng khi đang đo X" vào trước nó chỉ tạo ra một câu tự mâu thuẫn.
+       */
+      const detail = error instanceof EvalError ? error.message : describeError(error);
+      const where = error instanceof EvalError
+        ? null
+        : measuring ? `Hỏng khi đang đo ${measuring}` : "Hỏng trước khi đo kịch bản nào";
+      await writeFile(path.join(out, "error.json"), JSON.stringify({ status: "FAIL", case: measuring, message: detail }, null, 2));
+      console.error(where ? `${where}: ${detail}` : detail);
       throw error;
     } finally {
       meta.generation_calls = generationCalls;
@@ -292,6 +397,8 @@ async function runCase(row: GoldenCase, deps: RunDeps): Promise<TurnRow[]> {
       message: turn.message,
       slots,
       history: [...history],
+      // Bộ đo phải mang việc đang làm dở y như production, nếu không nó đo một hệ thống khác.
+      previousIntent: rows.length > 0 ? (rows[rows.length - 1].agent as never) : undefined,
     });
 
     /**
@@ -337,6 +444,11 @@ async function runCase(row: GoldenCase, deps: RunDeps): Promise<TurnRow[]> {
       prompt_tokens: result.trace.calls.reduce((sum, call) => sum + (call.promptTokens ?? 0), 0),
       output_tokens: result.trace.calls.reduce((sum, call) => sum + (call.outputTokens ?? 0), 0),
       retries: result.trace.calls.reduce((sum, call) => sum + (call.retries ?? 0), 0),
+      calls: result.trace.calls.map((call) => ({
+        model: call.model,
+        ms: call.latencyMs,
+        retries: call.retries ?? 0,
+      })),
       // Chỉ chứng cứ tri thức mới vào Recall@k: khối thời tiết có sourceRef là khoá nhà cung cấp
       // chứ không phải một tài liệu trong bộ vàng, nên gộp nó vào sẽ kéo Precision@k xuống một
       // cách vô nghĩa.

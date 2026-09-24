@@ -62,6 +62,10 @@ export function createApp(): express.Express {
   app.use(cookieParser());
 
   app.use("/api", apiRouter);
+  // Kết thúc API trước Vite/static/SPA được gắn trong index.ts, với mọi HTTP method.
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ error: "Không tìm thấy endpoint API" });
+  });
   // Phải đứng SAU apiRouter: express chỉ gọi error handler đăng ký sau nơi lỗi phát sinh.
   app.use("/api", apiErrorHandler);
 

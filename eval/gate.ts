@@ -101,10 +101,39 @@ export const GATE_RULES: GateRule[] = [
   { key: "ragas.context_precision", label: "RAGAS context_precision", direction: "min", fallback: null, env: "EVAL_MIN_CONTEXT_PRECISION", unit: "ratio", samples: "ragas.count" },
   { key: "ragas.context_recall", label: "RAGAS context_recall", direction: "min", fallback: null, env: "EVAL_MIN_CONTEXT_RECALL", unit: "ratio", samples: "ragas.count" },
   { key: "retrieval.recall_at_k", label: "Recall@k", direction: "min", fallback: 0.7, env: "EVAL_MIN_RECALL_AT_K", unit: "ratio", samples: "retrieval.count" },
-  { key: "retrieval.precision_at_k", label: "Precision@k (độ chính xác trích dẫn)", direction: "min", fallback: 0.6, env: "EVAL_MIN_PRECISION_AT_K", unit: "ratio", samples: "retrieval.count" },
+  /**
+   * NGƯỠNG TẮT CÓ CHỦ ĐÍCH — Precision@k không đo được điều nó định đo trên bộ vàng này.
+   *
+   * Precision@k bằng `số đoạn đúng / số đoạn trả về`. Trong bộ vàng hiện tại, 53 trên 54 câu
+   * holdout chỉ gắn ĐÚNG MỘT tài liệu, trong khi truy xuất trả về trung bình 2,41 đoạn. Trần lý
+   * thuyết của chỉ số này vì thế là 0,4954: kể cả khi mọi câu đều tìm đúng tài liệu, nó vẫn
+   * không thể chạm ngưỡng 0,6. Giá trị đo được 0,4685 đã là 94,6% của trần.
+   *
+   * Đã kiểm xem nhãn có thiếu không, vì nếu bộ vàng gắn sót tài liệu anh em thì lỗi nằm ở nhãn
+   * chứ không ở chỉ số. Kết quả ngược lại: đối chiếu nội dung từng tài liệu với đáp án mẫu, 161
+   * trên 162 câu có nhãn được tài liệu ĐÃ GẮN phủ trọn. Nhãn đúng — câu hỏi thật sự chỉ có một
+   * tài liệu trả lời.
+   *
+   * Nên cách duy nhất để "đạt" ngưỡng này là trả về ít đoạn hơn — trung bình dưới 1,67 đoạn mỗi
+   * câu — và đó là tối ưu hoá theo một con số trong khi làm hỏng Recall thật. Đúng kiểu hỏng mà
+   * một cổng chất lượng sinh ra để ngăn.
+   *
+   * Mối lo mà Precision@k được đặt ra để canh — truy xuất nới rộng kéo theo nguồn không liên
+   * quan — nay do `retrieval.hit_at_1` canh: nhét thêm ứng viên vào danh sách sẽ đẩy tài liệu
+   * đúng khỏi vị trí đầu, và chỉ số đó tụt ngay. Nó đo cùng một thứ mà không phụ thuộc vào việc
+   * bộ vàng gắn một hay nhiều nhãn.
+   *
+   * Bật lại ngưỡng này khi bộ vàng chuyển sang gắn nhiều tài liệu cho một câu:
+   * `EVAL_MIN_PRECISION_AT_K=0.6`.
+   */
+  { key: "retrieval.precision_at_k", label: "Precision@k (độ chính xác trích dẫn)", direction: "min", fallback: null, env: "EVAL_MIN_PRECISION_AT_K", unit: "ratio", samples: "retrieval.count" },
   { key: "retrieval.mrr", label: "MRR", direction: "min", fallback: 0.6, env: "EVAL_MIN_MRR", unit: "ratio", samples: "retrieval.count" },
   { key: "retrieval.ndcg_at_k", label: "nDCG@k", direction: "min", fallback: null, env: "EVAL_MIN_NDCG", unit: "ratio", samples: "retrieval.count" },
-  { key: "retrieval.hit_at_1", label: "Nguồn đúng ở vị trí đầu", direction: "min", fallback: null, env: "EVAL_MIN_HIT_AT_1", unit: "ratio", samples: "retrieval.count" },
+  /**
+   * Thay chân Precision@k làm luật canh việc truy xuất nới rộng bừa. Ngưỡng 0,7 đặt dưới mức đo
+   * được 0,7778 một chút, đủ để bắt một lần tụt thật mà không đỏ vì nhiễu giữa hai lần chạy.
+   */
+  { key: "retrieval.hit_at_1", label: "Nguồn đúng ở vị trí đầu", direction: "min", fallback: 0.7, env: "EVAL_MIN_HIT_AT_1", unit: "ratio", samples: "retrieval.count" },
   { key: "retrieval.hit_at_3", label: "Nguồn đúng trong top-3", direction: "min", fallback: 0.7, env: "EVAL_MIN_HIT_AT_3", unit: "ratio", samples: "retrieval.count" },
   { key: "retrieval.empty_retrieval_rate", label: "Tỷ lệ truy xuất rỗng", direction: "max", fallback: 0.1, env: "EVAL_MAX_EMPTY_RETRIEVAL", unit: "ratio", samples: "retrieval.count" },
   { key: "grounding.cited_answer_rate", label: "Câu trả lời dẫn được nguồn", direction: "min", fallback: 0.8, env: "EVAL_MIN_CITED_ANSWER", unit: "ratio", samples: "grounding.answered_with_evidence" },

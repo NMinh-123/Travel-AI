@@ -114,13 +114,16 @@ describe("IT-RAG-03: nhánh từ khoá khớp được chữ KHÔNG DẤU", () =
   });
 });
 
-describe("IT-RAG-04: bộ lọc địa danh hai tầng", () => {
+/**
+ * Địa danh là tín hiệu XẾP HẠNG, không phải bộ lọc.
+ *
+ * Bản trước lọc cứng trong `baseFilter` và có một phép kiểm chốt rằng "đoạn của địa danh KHÁC bị
+ * loại". Quyết định đó đã đổi, có chủ đích, sau lần chạy đánh giá ngày 2026-09-22: khoá địa danh
+ * đến từ một lượt gọi model nên nó bịa được và lệch cấp được, mà một tín hiệu như vậy không được
+ * phép làm biến mất ứng viên. Xem ghi chú dài trong `baseFilter` của retrieval.ts.
+ */
+describe("IT-RAG-04: địa danh xếp hạng chứ không loại bỏ", () => {
   it("đoạn cấp địa bàn LUÔN là ứng viên, kể cả khi khách nêu một địa danh khác", async () => {
-    /**
-     * Đây là phép kiểm bảo vệ quyết định thiết kế quan trọng nhất của `baseFilter`. Lọc cứng
-     * `placeSlug IN (...)` sẽ loại toàn bộ tri thức cấp địa bàn — giấy tờ biên giới, bằng lái,
-     * sạt lở mùa mưa — ngay khi khách lỡ nhắc tên một nơi trong câu hỏi.
-     */
     const result = await retrieve("giấy tờ", {
       ...OPEN,
       placeSlugs: ["deo-ma-pi-leng"],
@@ -129,13 +132,34 @@ describe("IT-RAG-04: bộ lọc địa danh hai tầng", () => {
     expect(result.chunks.map((chunk) => chunk.slug)).toContain("guide:giay-to-bien-gioi");
   });
 
-  it("đoạn của địa danh KHÁC bị loại", async () => {
+  /**
+   * Đây là ca đã đổi hành vi. Trước: đoạn của địa danh khác BỊ LOẠI. Nay: nó còn nguyên trong
+   * danh sách ứng viên. GS-107 cho thấy vì sao — câu hỏi không nhắc nơi nào, NLU bịa ra một tỉnh,
+   * và tài liệu đúng gắn ở thành phố cùng tên bị gạt mất dù đứng hạng 1.
+   */
+  it("đoạn của địa danh KHÁC vẫn là ứng viên, không bị loại", async () => {
     const result = await retrieve("chợ phiên", {
       ...OPEN,
       placeSlugs: ["deo-ma-pi-leng"],
       branches: { vector: false, metadata: false },
     });
-    expect(result.chunks.map((chunk) => chunk.slug)).not.toContain("guide:cho-phien-dong-van");
+    expect(result.chunks.map((chunk) => chunk.slug)).toContain("guide:cho-phien-dong-van");
+  });
+
+  /**
+   * Đổi lại, địa danh khách nhắc phải còn TÁC DỤNG — nếu không thì việc trích xuất địa danh thành
+   * vô nghĩa. Bật nhánh metadata lên: đoạn khớp địa danh xuất hiện ở hai nhánh nên RRF đẩy nó lên
+   * trên đoạn chỉ khớp nội dung.
+   */
+  it("đoạn khớp địa danh xếp TRÊN đoạn của nơi khác", async () => {
+    const result = await retrieve("chợ phiên", {
+      ...OPEN,
+      placeSlugs: ["dong-van"],
+      branches: { vector: false, metadata: true },
+    });
+    const slugs = result.chunks.map((chunk) => chunk.slug);
+    expect(slugs).toContain("guide:cho-phien-dong-van");
+    expect(slugs.indexOf("guide:cho-phien-dong-van")).toBe(0);
   });
 
   it("không nêu địa danh nào thì không lọc theo địa danh", async () => {
