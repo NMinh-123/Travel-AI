@@ -42,9 +42,9 @@ Chưa dùng: Resend (làm sau khi ra mắt), Cloudflare R2 (khi có upload), Ups
 
 | Hạng mục | Lựa chọn | Trạng thái |
 |---|---|---|
-| Tên miền | **vntravelai.food**: đăng ký ngày 2026-09-24 qua iNET, hết hạn 2027-09-24. RDAP đang báo `client hold` (xem Bước 0) | ☑ |
+| Tên miền | **vntravelai.food**: đăng ký ngày 2026-09-24 qua iNET, hết hạn 2027-09-24. `client hold` đã gỡ (kiểm 2026-09-24 09:24 UTC). Nameserver còn là của iNET (`vclouddns.com`), chưa về Cloudflare | ☑ |
 | Giai đoạn | **Thử thị trường** trước (mục tiêu khoảng 1000 người dùng/tháng), chưa thuê VPS lớn. Người dùng chốt ngày 2026-09-24 | ☑ |
-| Nhà cung cấp VPS | **Oracle Cloud Always Free**, Ampere A1 ARM 2 OCPU / 12 GB, home region **Singapore**. Khi cần lên thật: Hostinger KVM 4 hoặc DigitalOcean (bảng so sánh ở Bước 0) | ☑ |
+| Nhà cung cấp VPS | **Cloud server Việt Nam trả bằng chuyển khoản** (KVM, 2–4 vCPU, 4 GB RAM, ≥ 40 GB SSD, Ubuntu 24.04 x86). Nhà cung cấp cụ thể: _chưa chốt_. Oracle Always Free bị bỏ ngày 2026-09-24 vì không xác minh được thẻ Visa. Đo ngày 2026-09-24: sidecar chỉ nạp BGE-M3 dùng 1,3 GB RAM, cả stack khoảng 2 GB | ◐ |
 | Dữ liệu có bắt buộc lưu tại Việt Nam (Nghị định 53/2022, SRS dòng 264)? | **Không bắt buộc**, người dùng chốt ngày 2026-09-24 | ☑ |
 | Database | **Supabase Free**, Singapore, cho giai đoạn thử. Lên Supabase Pro khi cần backup hằng ngày hoặc vượt hạn mức Free | ☑ |
 | Rerank | **Tắt** (`RERANK_ENABLED=false`). Đo trên x86 20 luồng, rerank 20 đoạn mất 5,8 s; trên 2 OCPU ARM sẽ chậm hơn nhiều | ☑ |
@@ -54,7 +54,7 @@ Chưa dùng: Resend (làm sau khi ra mắt), Cloudflare R2 (khi có upload), Ups
 ## Bước 0: Chốt quyết định (người dùng làm, không cần code)
 
 - [x] Chọn tên miền: `vntravelai.food`.
-  - [ ] Gỡ trạng thái `client hold`. Khi còn trạng thái này, tên miền **không phân giải được** và
+  - [x] Gỡ trạng thái `client hold`. Khi còn trạng thái này, tên miền **không phân giải được** và
         không đổi nameserver sang Cloudflare được. Thường là do chưa xác minh email chủ thể theo
         yêu cầu của ICANN, hoặc hồ sơ/thanh toán ở iNET chưa hoàn tất. Kiểm lại bằng
         `curl -s https://rdap.org/domain/vntravelai.food`: trường `status` không còn `client hold` là xong.
@@ -239,17 +239,45 @@ tới `/api/health` thì trả OK.
 
 ## Bước 5: Cloudflare
 
-- [ ] Chuyển nameserver của tên miền về Cloudflare, bật proxy (đám mây cam) cho bản ghi app.
-- [ ] SSL/TLS đặt **Full (strict)**, bật Always Use HTTPS và HSTS (sau khi chắc HTTPS ổn).
-- [ ] IP khách: đặt `TRUST_PROXY` cho đúng số tầng proxy (Cloudflare → Caddy/nginx → Express).
-      Cách khác là cho server đọc `CF-Connecting-IP`. **Kiểm bằng log**: hai máy khác nhau phải ra
-      hai IP khác nhau, không phải IP của Cloudflare. Nếu sai, mọi người dùng chung một bộ đếm
-      rate limit.
-- [ ] Cache: asset tĩnh có hash của Vite thì cache dài hạn. Bypass cache cho `/api/*`.
-- [ ] Turnstile: tạo site key, gắn widget vào form đăng nhập và đăng ký, kiểm token ở
-      `server/routes/auth.ts` (endpoint `siteverify`). Viết test cho nhánh token sai.
-- [ ] CSP (`server/middleware/securityHeaders.ts`): thêm `challenges.cloudflare.com` vào
-      `script-src` và `frame-src`. Chạy thử với `CSP_REPORT_ONLY` trước khi bật chặn thật.
+Việc của người dùng trên dashboard Cloudflare (không cần server):
+
+- [ ] Tạo tài khoản https://dash.cloudflare.com (gói Free) → **Add a domain** → `vntravelai.food` →
+      gói **Free**. Cloudflare đưa 2 nameserver dạng `xxx.ns.cloudflare.com`.
+- [ ] Ở trang quản lý tên miền của iNET: đổi nameserver từ `sapa/laocai.vclouddns.com` sang 2
+      nameserver của Cloudflare. Chờ Cloudflare báo "Active" (vài phút tới vài giờ).
+- [ ] **SSL/TLS → Overview:** chế độ **Full (strict)**.
+- [ ] **SSL/TLS → Origin Server → Create Certificate:** RSA, hostname `vntravelai.food` và
+      `*.vntravelai.food`, thời hạn 15 năm. Lưu **Origin Certificate** thành `origin.pem` và
+      **Private Key** thành `origin.key` (private key chỉ hiện MỘT lần). Chép lên server vào
+      `/opt/travel-ai/deploy/certs/` khi có server (chmod 600). Không gửi private key qua chat.
+- [ ] **Turnstile → Add widget:** tên `travelai`, hostname `vntravelai.food`, chế độ **Managed**.
+      Cloudflare đưa **Site Key** và **Secret Key**: ghi vào `.env` trên server thành
+      `TURNSTILE_SITE_KEY` và `TURNSTILE_SECRET_KEY`.
+- [ ] Khi có IP server: **DNS → Add record** `A` `@` → IP server, **Proxied** (đám mây cam); thêm
+      `CNAME` `www` → `vntravelai.food`, Proxied, nếu dùng www.
+- [ ] Sau khi HTTPS đã chạy ổn vài ngày: **SSL/TLS → Edge Certificates** bật **Always Use HTTPS**,
+      rồi mới bật **HSTS**. Server đã gửi HSTS ở production, nên bật HSTS ở Cloudflare là tuỳ chọn.
+- [ ] **Caching → Cache Rules:** rule "Bypass cache" khi URI Path bắt đầu bằng `/api/`. Asset của
+      Vite có hash trong tên nên để Cloudflare cache theo mặc định là đủ.
+
+Đã làm trong mã:
+
+- [x] IP khách: `TRUST_PROXY=2` cố định trong `docker-compose.prod.yml` (Cloudflare → Caddy →
+      Express), đã đo bằng container giả lập ở Bước 4. **Còn phải kiểm trên máy thật**: hai máy
+      khác nhau vào qua tên miền thì log phải ra hai IP khác nhau, không phải IP của Cloudflare.
+- [x] Turnstile ở form đăng nhập và đăng ký:
+  - `server/middleware/turnstile.ts` đứng trước `/api/auth/login` và `/api/auth/register`, gọi
+    `siteverify`. Thiếu hoặc sai token → 400; không gọi được Cloudflare → 503 (từ chối, không cho
+    qua). Chỉ bật khi có ĐỦ `TURNSTILE_SITE_KEY` và `TURNSTILE_SECRET_KEY`; thiếu thì dev, CI và
+    E2E chạy như cũ. Đăng nhập Google không đi qua Turnstile.
+  - `/api/config` trả `turnstileSiteKey`; `AuthModal` hiện widget, gửi `turnstileToken`, và
+    reset widget sau mỗi lần gửi (mỗi token dùng một lần).
+  - Test: `server/middleware/turnstile.test.ts` (5 ca, gồm token sai). Kiểm trong trình duyệt
+    bằng khoá thử của Cloudflare: secret `1x…AA` qua được tới bước kiểm mật khẩu, kể cả lượt
+    thử thứ hai sau khi reset; secret `2x…AA` bị chặn 400 và giao diện hiện đúng thông báo.
+- [x] CSP: thêm `https://challenges.cloudflare.com` vào `script-src` và `frame-src`. Đã chạy
+      stack production (CSP chặn thật) với khoá thử: widget lấy được token, không có lỗi CSP nào
+      trong console, nên không cần chạy qua `CSP_REPORT_ONLY`.
 
 **Xong khi:** đăng nhập qua tên miền thật chạy được với Turnstile, log ghi đúng IP khách, không
 có lỗi CSP trong console.
