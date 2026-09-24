@@ -113,10 +113,13 @@ printf 'CF_IPS=%s\n' "$cf" >> "$APP_DIR/.env.tmp"
 cat "$APP_DIR/.env.tmp" > "$APP_DIR/.env"
 rm -f "$APP_DIR/.env.tmp"
 
-echo "== 6/6 Sao lưu database hằng ngày (02:17 giờ Việt Nam)"
+echo "== 6/6 Sao lưu database hằng ngày (02:17 theo giờ của máy)"
 install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$BACKUP_DIR"
+# Giờ trong cron là giờ CỦA MÁY, không phải UTC. Bản đầu viết `17 19` với ý là 02:17 giờ Việt Nam
+# (tính theo UTC), nhưng VPS Việt Nam đặt sẵn Asia/Ho_Chi_Minh nên nó chạy lúc 19:17 tối, giờ cao
+# điểm. Xem múi giờ bằng `timedatectl`.
 cat > /etc/cron.d/travel-ai-backup <<EOF
-17 19 * * * $DEPLOY_USER ENV_FILE=$APP_DIR/.env BACKUP_DIR=$BACKUP_DIR KEEP=7 sh $APP_DIR/scripts/backup-db.sh >> $BACKUP_DIR/backup.log 2>&1
+17 2 * * * $DEPLOY_USER ENV_FILE=$APP_DIR/.env BACKUP_DIR=$BACKUP_DIR KEEP=7 sh $APP_DIR/scripts/backup-db.sh >> $BACKUP_DIR/backup.log 2>&1
 EOF
 chmod 644 /etc/cron.d/travel-ai-backup
 
