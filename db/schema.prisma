@@ -13,7 +13,10 @@
 // thị vốn có của mảng gốc.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // Image web sinh client một lần trên máy build rồi chạy trên cả amd64 lẫn arm64 (Oracle Cloud
+  // Ampere). Hai target dưới khớp với node:24-bookworm-slim (OpenSSL 3) ở từng kiến trúc.
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-arm64-openssl-3.0.x"]
 }
 
 datasource db {
