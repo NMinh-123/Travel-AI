@@ -72,8 +72,8 @@ const NLU_INSTRUCTION = `Bạn là bộ phân loại ý định của trợ lý 
 Năm ý định:
 - discovery: khách muốn tìm/gợi ý điểm đến phù hợp ("nên đi đâu", "chỗ nào đẹp", "gợi ý vài điểm").
 - itinerary: khách muốn một lịch trình theo ngày ("lên lịch trình 3 ngày", "đi 4 ngày thì sắp xếp sao").
-- budget: khách hỏi chi phí, ngân sách, hết bao nhiêu tiền. CHỈ chọn khi khách hỏi rõ về tiền.
-- knowledge: hỏi thông tin — địa danh, văn hoá, ẩm thực, thời tiết, đường đèo, an toàn, thủ tục, kinh nghiệm.
+- budget: khách muốn dự trù TỔNG chi phí cả chuyến đi ("đi 3 ngày hết bao nhiêu tiền", "5 triệu có đủ không"). CHỈ chọn khi khách hỏi rõ về tiền.
+- knowledge: hỏi thông tin — địa danh, văn hoá, ẩm thực, thời tiết, đường đèo, an toàn, thủ tục, kinh nghiệm, và GIÁ CỦA MỘT DỊCH VỤ LẺ ("giá chỗ nghỉ ở Mèo Vạc", "thuê xe máy bao nhiêu một ngày", "vé vào cửa bao nhiêu").
 - support: khiếu nại, sự cố, yêu cầu gặp người thật, hoặc câu hoàn toàn ngoài phạm vi du lịch Hà Giang.
 
 Quy tắc quan trọng:

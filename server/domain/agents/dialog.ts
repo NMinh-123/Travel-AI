@@ -76,7 +76,9 @@ export function mergeSlots(current: Slots, incoming: Slots): Slots {
 const REQUIRED_SLOTS: Record<Intent, (keyof Slots)[]> = {
   discovery: [],
   itinerary: ["days"],
-  budget: ["days"],
+  // Không đòi `days`: runBudget tự tạm tính 3 ngày và nói rõ giả định. Chặn ở đây thì câu hỏi giá
+  // một dịch vụ lẻ ("giá chỗ nghỉ ở Mèo Vạc") bị hỏi ngược "đi mấy ngày" thay vì được trả lời.
+  budget: [],
   knowledge: [],
   support: [],
 };

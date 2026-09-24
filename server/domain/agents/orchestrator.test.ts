@@ -245,6 +245,12 @@ describe("KE-14…KE-20: đường đi thật với phụ thuộc ra ngoài đư
     expect(out.result.reply).toContain("ngày");
     expect(deps.runAgent).not.toHaveBeenCalled();
   });
+  it("hỏi giá thiếu days vẫn chạy tác tử budget, không hỏi ngược", async () => {
+    const deps = fixture({ intent: "budget" });
+    const out = await handleTurn({ ...input, message: "giá chỗ nghỉ ở Mèo Vạc" }, deps);
+    expect(deps.runAgent).toHaveBeenCalledWith("budget", expect.anything());
+    expect(sequence(out)).not.toContain("slot_gate:ask");
+  });
   it("tool lỗi và lần thử sau giữ đúng thứ tự, mã lỗi", async () => {
     const out = await handleTurn(input, fixture({}, { ...answer, toolCalls: [
       { tool: "getWeather", outcome: "failed", code: "TIMEOUT" },
