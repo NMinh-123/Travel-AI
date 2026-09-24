@@ -219,7 +219,12 @@ nhà cung cấp (`162.4.177.142`) hỏng VM ngay khi tạo và đã được tha
 - [x] `web` + `embedding` build ngay trên máy (4 phút 54 giây) và chạy healthy: `/api/health`
       nối được Supabase; chatbot trả lời câu RAG có trích dẫn trong 13 giây. RAM lúc nghỉ: web
       139 MB, embedding 895 MB. Từ ngoài, cổng 3000, 8000, 80, 5432 đều đóng.
-- [ ] `caddy` chưa chạy: chờ Origin Certificate (Bước 5).
+- [x] `caddy` chạy với Cloudflare Origin Certificate (hạn 2041, khoá khớp chứng chỉ, chmod 600).
+      Lúc chép, hai tệp bị dán ngược nội dung (`.pem` chứa key); đã đổi tên lại và kiểm khớp
+      bằng dấu vân tay public key.
+- [x] **Tiêu chí Bước 4 đạt:** gọi thẳng `https://103.216.116.207` bị đóng kết nối;
+      `https://vntravelai.food/api/health` và `https://www.vntravelai.food/api/health` qua
+      Cloudflare trả 200 (khoảng 0,4 s), đủ header CSP, HSTS, X-Frame-Options.
 
 Việc trên máy thật (danh sách gốc):
 
@@ -259,19 +264,19 @@ tới `/api/health` thì trả OK.
 
 Việc của người dùng trên dashboard Cloudflare (không cần server):
 
-- [ ] Tạo tài khoản https://dash.cloudflare.com (gói Free) → **Add a domain** → `vntravelai.food` →
+- [x] Tạo tài khoản https://dash.cloudflare.com (gói Free) → **Add a domain** → `vntravelai.food` →
       gói **Free**. Cloudflare đưa 2 nameserver dạng `xxx.ns.cloudflare.com`.
-- [ ] Ở trang quản lý tên miền của iNET: đổi nameserver từ `sapa/laocai.vclouddns.com` sang 2
+- [x] Ở trang quản lý tên miền của iNET: đổi nameserver từ `sapa/laocai.vclouddns.com` sang 2
       nameserver của Cloudflare. Chờ Cloudflare báo "Active" (vài phút tới vài giờ).
 - [ ] **SSL/TLS → Overview:** chế độ **Full (strict)**.
-- [ ] **SSL/TLS → Origin Server → Create Certificate:** RSA, hostname `vntravelai.food` và
+- [x] **SSL/TLS → Origin Server → Create Certificate:** RSA, hostname `vntravelai.food` và
       `*.vntravelai.food`, thời hạn 15 năm. Lưu **Origin Certificate** thành `origin.pem` và
       **Private Key** thành `origin.key` (private key chỉ hiện MỘT lần). Chép lên server vào
       `/opt/travel-ai/deploy/certs/` khi có server (chmod 600). Không gửi private key qua chat.
 - [ ] **Turnstile → Add widget:** tên `travelai`, hostname `vntravelai.food`, chế độ **Managed**.
       Cloudflare đưa **Site Key** và **Secret Key**: ghi vào `.env` trên server thành
       `TURNSTILE_SITE_KEY` và `TURNSTILE_SECRET_KEY`.
-- [ ] Khi có IP server: **DNS → Add record** `A` `@` → IP server, **Proxied** (đám mây cam); thêm
+- [x] Khi có IP server: **DNS → Add record** `A` `@` → IP server, **Proxied** (đám mây cam); thêm
       `CNAME` `www` → `vntravelai.food`, Proxied, nếu dùng www.
 - [ ] Sau khi HTTPS đã chạy ổn vài ngày: **SSL/TLS → Edge Certificates** bật **Always Use HTTPS**,
       rồi mới bật **HSTS**. Server đã gửi HSTS ở production, nên bật HSTS ở Cloudflare là tuỳ chọn.
@@ -281,8 +286,9 @@ Việc của người dùng trên dashboard Cloudflare (không cần server):
 Đã làm trong mã:
 
 - [x] IP khách: `TRUST_PROXY=2` cố định trong `docker-compose.prod.yml` (Cloudflare → Caddy →
-      Express), đã đo bằng container giả lập ở Bước 4. **Còn phải kiểm trên máy thật**: hai máy
-      khác nhau vào qua tên miền thì log phải ra hai IP khác nhau, không phải IP của Cloudflare.
+      Express), đã đo bằng container giả lập ở Bước 4 và **đã kiểm trên máy thật**: đăng nhập thử
+      qua tên miền bằng IPv4 và IPv6, bộ đếm rate limit ghi đúng hai IP thật của khách (so bằng
+      hash sha256 của key), không phải IP Cloudflare hay Docker.
 - [x] Turnstile ở form đăng nhập và đăng ký:
   - `server/middleware/turnstile.ts` đứng trước `/api/auth/login` và `/api/auth/register`, gọi
     `siteverify`. Thiếu hoặc sai token → 400; không gọi được Cloudflare → 503 (từ chối, không cho
@@ -347,3 +353,5 @@ Mỗi bước xong thì ghi một dòng: ngày, bước, kết quả, commit ho�
 | 2026-09-24 | Bước 2 | Xong trên máy dev. Dockerfile web + embedding, `docker-compose.prod.yml`, `.dockerignore`, `binaryTargets` cho arm64. Stack production chạy lên, `/api/health` và `/ready` OK, chatbot trả lời câu RAG có trích dẫn (14 s). Image arm64 build và khởi động được dưới QEMU | Chưa đo tốc độ nhúng trên ARM thật; image web 873 MB, embedding 1,99 GB chưa kèm model |
 | 2026-09-24 | Bước 3 | Xong. Supabase Free Singapore (PG 17.6): migrate 13/13, seed khớp `data/website`, ingest 167 đoạn, `db:audit` sạch; app Docker trỏ vào Supabase trả lời chatbot đúng; backup + khôi phục thử thành công | Chưa đặt cron backup (Bước 4). `package.json` có thêm `@supabase/supabase-js` và `@supabase/ssr` do người dùng tự cài, chưa commit và chưa dùng ở đâu |
 | 2026-09-24 | Bước 4 | Gần xong. Server Việt Nam 103.216.116.207 (SSH 24700) dựng bằng `setup-server.sh`; web + embedding chạy healthy trên máy, nối Supabase, chatbot trả lời RAG; firewall giữ qua reboot | Còn: Origin Certificate để bật `caddy`, rồi kiểm "gọi thẳng IP bị chặn, qua Cloudflare thì OK" ở Bước 5 |
+| 2026-09-24 | Bước 4 | Xong. Caddy + Origin Certificate; gọi thẳng IP bị đóng kết nối, qua Cloudflare trả 200 | — |
+| 2026-09-24 | Bước 5 | Gần xong. Nameserver đã về Cloudflare, DNS proxied, HTTPS chạy cho `vntravelai.food` và `www`; app nhận đúng IP thật của khách | Còn: bật Always Use HTTPS (http:// đang treo), kiểm SSL mode là Full (strict), tạo Turnstile widget và đưa khoá lên server sau khi merge PR #5, Cache Rule bypass `/api/` |
