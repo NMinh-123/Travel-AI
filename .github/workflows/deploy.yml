@@ -1,0 +1,190 @@
+# Tự động deploy lên máy chủ production. Xem claude_production.md, Bước 6.
+#
+# Hai cách chạy:
+#   - Tự động: CI trên `main` xanh → build image theo SHA → migrate → deploy → kiểm /api/health.
+#   - Bằng tay (Actions → Deploy → Run workflow):
+#       để trống `sha`  → build và deploy HEAD của main;
+#       điền một `sha`  → ROLLBACK: không build, dùng lại image của commit đó trên GHCR.
+#
+# Secrets/variables nằm trong GitHub Environment `production`:
+#   secrets   DATABASE_URL (Session pooler Supabase), SSH_PRIVATE_KEY, SSH_KNOWN_HOSTS
+#   variables SSH_HOST, SSH_PORT, SSH_USER
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "SHA đầy đủ của commit cần quay về (image phải có sẵn trên GHCR). Để trống = deploy HEAD của main."
+        required: false
+        default: ""
+
+# Không bao giờ chạy hai lượt deploy chồng lên nhau, và không huỷ lượt đang chạy giữa chừng.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  WEB_IMAGE: ghcr.io/nminh-123/travel-ai-web
+  EMBEDDING_IMAGE: ghcr.io/nminh-123/travel-ai-embedding
+
+jobs:
+  prepare:
+    name: Chọn commit
+    # CI đỏ thì không deploy gì cả.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.pick.outputs.sha }}
+      build: ${{ steps.pick.outputs.build }}
+    steps:
+      - id: pick
+        env:
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          if [ -n "$INPUT_SHA" ]; then
+            echo "$INPUT_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "sha phải là SHA đầy đủ 40 ký tự" >&2; exit 1; }
+            echo "sha=$INPUT_SHA" >> "$GITHUB_OUTPUT"; echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${RUN_SHA:-$GITHUB_SHA}" >> "$GITHUB_OUTPUT"; echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build và đẩy image
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Chỉ amd64: máy chủ hiện là x86. Chuyển sang máy ARM thì thêm linux/arm64 (Dockerfile đã
+      # hỗ trợ, xem Bước 2).
+      - name: Image web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.WEB_IMAGE }}:${{ needs.prepare.outputs.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+      - name: Image embedding
+        uses: docker/build-push-action@v6
+        with:
+          context: services/embedding
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.EMBEDDING_IMAGE }}:${{ needs.prepare.outputs.sha }}
+          cache-from: type=gha,scope=embedding
+          cache-to: type=gha,scope=embedding,mode=max
+
+  deploy:
+    name: Migrate và deploy
+    needs: [prepare, build]
+    # Chạy cả khi `build` bị bỏ qua (rollback), nhưng không chạy khi nó hỏng.
+    if: always() && needs.prepare.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SHA: ${{ needs.prepare.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Kiểm image có trên GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker manifest inspect "$WEB_IMAGE:$SHA" > /dev/null
+          docker manifest inspect "$EMBEDDING_IMAGE:$SHA" > /dev/null
+
+      # Migrate TRƯỚC khi đổi container: code mới chạy trên schema cũ là lỗi ngay lúc khởi động,
+      # còn code cũ vẫn chạy được trên schema mới khi migration chỉ thêm (quy ước của dự án).
+      # Image web không có Prisma CLI nên migrate chạy từ runner, qua Session pooler (IPv4).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx prisma migrate deploy
+
+      - name: Nạp khoá SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # Một host tên `prod` trong ~/.ssh/config: `~` trong IdentityFile được ssh tự hiểu, còn
+          # `~` nằm trong một biến môi trường thì shell không mở rộng.
+          printf 'Host prod\n  HostName %s\n  Port %s\n  User %s\n  IdentityFile ~/.ssh/deploy_key\n  BatchMode yes\n' \
+            "${{ vars.SSH_HOST }}" "${{ vars.SSH_PORT }}" "${{ vars.SSH_USER }}" > ~/.ssh/config
+
+      - name: Đổi image trên máy chủ
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Token của lượt chạy này chỉ sống trong lúc job chạy; máy chủ đăng xuất ngay sau khi kéo
+          # image, nên không có khoá GHCR nào nằm lại trên máy.
+          printf '%s' "$GHCR_TOKEN" | ssh prod "docker login ghcr.io -u '${{ github.actor }}' --password-stdin" > /dev/null
+          # Cố ý mở rộng ở phía runner: SHA và tên image phải được điền sẵn trước khi gửi đi.
+          # shellcheck disable=SC2029
+          ssh prod "SHA=$SHA WEB_IMAGE=$WEB_IMAGE EMBEDDING_IMAGE=$EMBEDDING_IMAGE sh -s" <<'REMOTE'
+          set -eu
+          cd /opt/travel-ai
+          # Mã trên máy (compose, Caddyfile, script) theo đúng commit được deploy. .env và
+          # deploy/certs/ không nằm trong git nên không bị đụng tới.
+          git fetch --quiet --depth 1 origin "$SHA"
+          git reset --quiet --hard FETCH_HEAD
+          # Ghi tag vào .env để một lần `docker compose up` bằng tay sau này vẫn dùng đúng image,
+          # không quay về tag :local. Sửa đúng hai dòng, không đụng phần còn lại (có bí mật).
+          grep -vE '^(WEB_IMAGE|EMBEDDING_IMAGE)=' .env > .env.tmp || true
+          printf 'WEB_IMAGE=%s:%s\nEMBEDDING_IMAGE=%s:%s\n' "$WEB_IMAGE" "$SHA" "$EMBEDDING_IMAGE" "$SHA" >> .env.tmp
+          cat .env.tmp > .env && rm -f .env.tmp
+          docker compose -f docker-compose.prod.yml pull --quiet
+          docker compose -f docker-compose.prod.yml up -d --no-build --remove-orphans
+          docker logout ghcr.io > /dev/null
+          # Dọn image không còn container nào dùng, cũ hơn 7 ngày. Rollback kéo lại từ GHCR nên
+          # không cần giữ trên máy.
+          docker image prune -af --filter "until=168h" > /dev/null
+          REMOTE
+
+      - name: Chờ app healthy
+        run: |
+          # Lần đầu sau khi đổi image, embedding phải nạp lại model (khoảng một phút) trước khi web
+          # được khởi động, nên chờ tối đa 5 phút.
+          for i in $(seq 1 60); do
+            if ssh prod "curl -fsS -m 5 http://127.0.0.1:3000/api/health" > /tmp/health.json 2>/dev/null; then
+              cat /tmp/health.json; echo; break
+            fi
+            [ "$i" = 60 ] && { echo "App không healthy sau 5 phút" >&2; ssh prod "cd /opt/travel-ai && docker compose -f docker-compose.prod.yml ps && docker compose -f docker-compose.prod.yml logs --tail 50 web"; exit 1; }
+            sleep 5
+          done
+          grep -q '"dbConnected":true' /tmp/health.json
+          # Kiểm cả đường khách thật đi: Cloudflare → Caddy → web.
+          curl -fsS -m 15 https://vntravelai.food/api/health > /dev/null
+          echo "Đã deploy $SHA"
+
+      - name: Dọn khoá SSH
+        if: always()
+        run: rm -f ~/.ssh/deploy_key ~/.ssh/config

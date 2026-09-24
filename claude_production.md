@@ -308,14 +308,33 @@ có lỗi CSP trong console.
 
 ## Bước 6: Tự động deploy và vận hành
 
-- [ ] GitHub Actions: khi CI của `main` xanh thì build hai image, gắn tag theo SHA của commit, đẩy
-      lên GHCR. Sau đó SSH vào VPS và chạy `docker compose pull && docker compose up -d`, rồi
-      `npm run db:migrate:deploy` (chạy migrate **trước** khi đổi container web).
-      Secrets để trong GitHub Environments `production`.
-- [ ] Rollback: một lệnh hoặc workflow thủ công để đặt tag image về SHA trước đó.
-- [ ] Theo dõi: dịch vụ uptime gọi `/ready` mỗi 5 phút, log Docker có xoay vòng (`max-size`),
-      cảnh báo ngân sách Gemini và Maps, cảnh báo dung lượng DB trên Supabase.
-- [ ] Ghi quy trình deploy và rollback vào `docs/`.
+- [x] `.github/workflows/deploy.yml`: CI trên `main` xanh → build image web và embedding (amd64,
+      cache GHA) gắn tag theo SHA, đẩy lên `ghcr.io/nminh-123/travel-ai-{web,embedding}` → `prisma
+      migrate deploy` từ runner vào Supabase (Session pooler, IPv4) **trước** khi đổi container →
+      SSH vào máy, `git reset` mã về đúng SHA, ghi `WEB_IMAGE`/`EMBEDDING_IMAGE` vào `.env`,
+      `docker compose pull` + `up -d --no-build` → chờ `/api/health` (tối đa 5 phút) và kiểm cả
+      `https://vntravelai.food/api/health` qua Cloudflare. Hai lượt deploy không bao giờ chạy chồng.
+  - Máy chủ đăng nhập GHCR bằng `GITHUB_TOKEN` của chính lượt chạy rồi đăng xuất ngay: không có
+    token GHCR nào nằm lại trên máy, không cần token cá nhân.
+  - `actionlint` sạch.
+- [x] GitHub Environment `production` (chỉ nhánh `main` được deploy): secrets `DATABASE_URL`,
+      `SSH_PRIVATE_KEY` (khoá riêng cho CI, tên `github-actions-deploy` trong `authorized_keys` của
+      user `deploy`; bản sao trên máy dev đã xoá), `SSH_KNOWN_HOSTS`; variables `SSH_HOST`,
+      `SSH_PORT`, `SSH_USER`.
+  - Thu hồi khoá CI: xoá dòng `github-actions-deploy` trong `/home/deploy/.ssh/authorized_keys`.
+- [ ] Rollback: Actions → **Deploy** → **Run workflow** → điền SHA đầy đủ của commit muốn quay về.
+      Không build lại, dùng image cũ trên GHCR. Lưu ý: migration **không** được đảo ngược; quay
+      về một commit cũ chỉ an toàn khi các migration mới hơn chỉ THÊM (không xoá/đổi cột).
+      Chưa thử: làm khi đã có lượt deploy tự động đầu tiên.
+- [x] Log Docker xoay vòng 10 MB × 3 (`/etc/docker/daemon.json`, do `setup-server.sh` đặt).
+- [ ] **(Người dùng)** Theo dõi uptime: tài khoản miễn phí ở UptimeRobot (hoặc Better Stack), monitor
+      HTTP(s) `https://vntravelai.food/api/health` mỗi 5 phút, cảnh báo qua email. `/api/health`
+      trả 503 khi mất database, nên monitor cũng bắt được sự cố DB.
+- [ ] **(Người dùng)** Cảnh báo chi phí: nạp tiền và đặt giới hạn ở proxy Gemini; Budget alert ở
+      Google Cloud cho Maps; theo dõi dung lượng DB ở Supabase (gói Free 500 MB, dashboard →
+      Reports).
+- Quy trình deploy/rollback ghi ngay trong tệp này và trong phần đầu `deploy.yml`, không đưa vào
+  `docs/` (thư mục đó bị `.gitignore` nên không tới được máy chủ hay người khác).
 
 **Xong khi:** merge một commit nhỏ vào `main` thì bản mới tự lên production, và đã thử
 rollback một lần.
