@@ -42,6 +42,22 @@ const ANAPHORA = word(
 );
 
 /**
+ * CÂU NỐI TIẾP LƯỢC CHỦ NGỮ: "Nên đi buổi sáng hay buổi chiều?", "Giá vé bao nhiêu?".
+ *
+ * Không có đại từ nào, nhưng câu vẫn chỉ hiểu được khi biết đang nói về nơi nào. GS-198 hỏi câu
+ * đầu ví dụ ngay sau câu về hẻm Tu Sản; truy xuất không có địa danh nên trả về Vách Đá Trắng và
+ * sương mù thay vì bến thuyền Tà Làng, và câu trả lời qua hay trượt guardrail tuỳ lượt.
+ *
+ * Chỉ bắt câu MỞ ĐẦU bằng một cụm hỏi lời khuyên, thời điểm hay giá — những câu tự nó không có
+ * chủ ngữ. Câu tự có chủ ngữ như "Thắng cố nấu bằng gì?" không bị gắn địa danh nào.
+ * ponytail: danh sách mở đầu viết tay, bổ sung khi eval lộ thêm kiểu câu nối tiếp khác.
+ */
+const ELLIPSIS = new RegExp(
+  String.raw`^\s*(?:có\s+)?(?:nên|mấy\s+giờ|bao\s+giờ|khi\s+nào|lúc\s+nào|giá|vé|mất\s+bao\s+lâu|đi\s+mất|có\s+cần|cần\s+mang)` + AFTER,
+  "iu",
+);
+
+/**
  * Viết tắt hay gặp trong tin nhắn tiếng Việt về vùng này.
  *
  * Bảng CỐ TÌNH ngắn và chỉ chứa những cụm không thể hiểu thành gì khác. Một bảng viết tắt rộng
@@ -74,7 +90,7 @@ const RENAMES: [RegExp, string][] = [
   [new RegExp(`${BEFORE}cao nguyên đá(?!\\s+đồng văn)${AFTER}`, "giu"), "cao nguyên đá Đồng Văn"],
 ];
 
-export type RewriteKind = "abbreviation" | "rename" | "anaphora";
+export type RewriteKind = "abbreviation" | "rename" | "anaphora" | "ellipsis";
 
 export interface RewriteInput {
   message: string;
@@ -93,7 +109,7 @@ export interface RewriteResult {
   query: string;
   /** Những phép đã áp dụng, để đo riêng từng nhóm. Rỗng nghĩa là câu đi thẳng, không qua xử lý. */
   applied: RewriteKind[];
-  /** Địa danh được mang sang từ lượt trước vì lượt này chỉ dùng đại từ. */
+  /** Địa danh được mang sang từ lượt trước vì lượt này chỉ dùng đại từ hoặc lược chủ ngữ. */
   resolvedPlaces: string[];
 }
 
@@ -131,12 +147,15 @@ export function rewriteQuery(input: RewriteInput): RewriteResult {
    */
   const carried = (input.carriedPlaces ?? []).filter(Boolean);
   const resolvedPlaces: string[] = [];
-  if (carried.length > 0 && hasAnaphora(input.message)) {
+  const kind: RewriteKind | undefined = hasAnaphora(input.message)
+    ? "anaphora"
+    : ELLIPSIS.test(input.message) ? "ellipsis" : undefined;
+  if (carried.length > 0 && kind) {
     // Chỉ mang MỘT địa danh: mang cả danh sách sẽ biến một câu hỏi về một nơi thành một truy vấn
     // trải trên nhiều nơi, và bộ lọc địa danh khi đó rộng hơn cả khi không lọc gì.
     resolvedPlaces.push(carried[0]);
     query = `${query} (${carried[0]})`;
-    applied.push("anaphora");
+    applied.push(kind);
   }
 
   return { query, applied, resolvedPlaces };
