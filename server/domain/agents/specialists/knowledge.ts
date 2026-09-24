@@ -14,7 +14,7 @@ import { isFailure } from "@server/infra/realtime/toolResult";
 import type { AgentContext, AgentResult, ToolCallTrace } from "@server/domain/agents/types";
 import {
   checkClaimCoverage, checkNumericFacts, resolveGrounding, resolveToolStatus, summarizeCoverage,
-  verifyCitations, type Citation, type EvidenceBlock,
+  stripSourceMarkers, verifyCitations, type Citation, type EvidenceBlock,
 } from "@server/domain/agents/grounding";
 import type { ToolErrorCode } from "@data/realtime/types";
 import { formatHistory, generateReply, personaFor } from "./shared";
@@ -544,7 +544,7 @@ nguồn đã dùng cho ý đó. Mọi câu có CON SỐ đều bắt buộc có 
 nguồn, không tự làm tròn theo ý mình và không tự suy ra con số mới.`,
   });
 
-  const reply = data?.reply?.trim() ?? "";
+  const reply = stripSourceMarkers(data?.reply ?? "").trim();
 
   /**
    * Model trả lời nhưng KHÔNG khai trích dẫn nào là một triệu chứng riêng, cần phân biệt được.

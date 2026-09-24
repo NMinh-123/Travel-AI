@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   checkClaimCoverage, checkNumericFacts, extractFacts, parseVnNumber, resolveGrounding,
-  resolveToolStatus, splitClaims, verifyCitations, type EvidenceBlock,
+  resolveToolStatus, splitClaims, stripSourceMarkers, verifyCitations, type EvidenceBlock,
 } from "./grounding";
 import { inspect } from "./guardrail";
+
+describe("stripSourceMarkers", () => {
+  it("xoá mã nguồn model chép vào câu trả lời, giữ nguyên chữ còn lại", () => {
+    expect(stripSourceMarkers("Phòng khoảng 300.000đ/đêm [K1]. Mùa hoa đắt hơn [K2, W1].")).toBe(
+      "Phòng khoảng 300.000đ/đêm. Mùa hoa đắt hơn.",
+    );
+    expect(stripSourceMarkers("Trời 12°C (W1) và có sương [K1][K3]")).toBe("Trời 12°C và có sương");
+    expect(stripSourceMarkers("Quốc lộ 4C [ghi chú] vẫn giữ")).toBe("Quốc lộ 4C [ghi chú] vẫn giữ");
+  });
+});
 import type { AgentResult } from "./types";
 
 const knowledge = (id: string, text: string): EvidenceBlock => ({

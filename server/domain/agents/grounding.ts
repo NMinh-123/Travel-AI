@@ -102,6 +102,16 @@ function normalizeId(value: string): string {
 }
 
 /**
+ * Xoá mã nguồn `[K1]`, `(K1, W2)` mà model chép vào reply. Mã chỉ thuộc về trường `citations`;
+ * để trong reply thì khách đọc thấy ký hiệu nội bộ, và chữ số trong mã còn lọt vào phép kiểm số.
+ */
+export function stripSourceMarkers(reply: string): string {
+  return reply
+    .replace(/[ \t]*[[(]\s*[KWB]\d+(?:\s*[,;]\s*[KWB]\d+)*\s*[\])]/g, "")
+    .replace(/[ \t]+([.,;:!?])/g, "$1");
+}
+
+/**
  * Giữ lại những mã thật, vứt những mã bịa.
  *
  * Phép kiểm này rẻ nhưng bắt được đúng kiểu hỏng nguy hiểm nhất của lối trích dẫn do model tự

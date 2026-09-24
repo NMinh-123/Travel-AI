@@ -263,7 +263,8 @@ function useSharedChatSession(userId: string | null): ChatSession {
 
         if (event.type === 'delta') {
           streamed += String(event.text);
-          writeBot(streamed, { streaming: true });
+          // Bản xem trước chưa qua server nên còn mã nguồn [K1]; ẩn đi cho khớp câu `final` đã được xoá mã.
+          writeBot(streamed.replace(/[ \t]*[[(]\s*[KWB]\d+(?:\s*[,;]\s*[KWB]\d+)*\s*[\])]/g, ''), { streaming: true });
           continue;
         }
 
