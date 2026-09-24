@@ -58,12 +58,12 @@ test("nhập mã trong thư cùng mật khẩu mới rồi đăng nhập lại b
   const newPassword = "matkhaumoi-sau-khi-quen";
 
   // Mã sai: hiện lỗi của server, chưa đăng nhập.
-  await page.getByPlaceholder("6 chữ số trong thư").fill("000000");
+  await page.locator('input[autocomplete="one-time-code"]').fill("000000");
   await page.getByPlaceholder("Tối thiểu 8 ký tự").fill(newPassword);
   await page.getByRole("button", { name: /đặt mật khẩu mới/i }).click();
   await expect(page.getByText("Mã xác nhận không đúng hoặc đã hết hạn")).toBeVisible();
 
-  await page.getByPlaceholder("6 chữ số trong thư").fill("482913");
+  await page.locator('input[autocomplete="one-time-code"]').fill("482913");
   await page.getByRole("button", { name: /đặt mật khẩu mới/i }).click();
   await expect(page.locator("#btn-user-profile")).toBeVisible({ timeout: 15_000 });
 
