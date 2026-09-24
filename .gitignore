@@ -28,4 +28,7 @@ data/raw-web/
 # Tài liệu nội bộ không đưa vào phiên bản Git.
 claude_fix.md
 codex_fix.md
+# Báo cáo kiểm thử và ghi chú lỗi viết tay, chỉ để đọc tại chỗ.
+erorr.md
+result_test*.md
 dia_danh.md
