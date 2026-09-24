@@ -32,3 +32,5 @@ codex_fix.md
 erorr.md
 result_test*.md
 dia_danh.md
+# Chứng chỉ Cloudflare Origin của máy chủ: bí mật, không bao giờ vào git.
+deploy/certs/

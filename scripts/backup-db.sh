@@ -2,6 +2,10 @@
 # Sao lưu database ra một tệp pg_dump, giữ KEEP bản gần nhất. Chạy trên VPS theo lịch (cron).
 #
 #   DATABASE_URL=postgresql://... BACKUP_DIR=/var/backups/travelai KEEP=7 sh scripts/backup-db.sh
+#   ENV_FILE=/opt/travel-ai/.env sh scripts/backup-db.sh      # đọc DATABASE_URL từ tệp env
+#
+# ENV_FILE để Docker tự đọc tệp (`--env-file`) thay vì `source` trong shell: mật khẩu Supabase
+# có ký tự như `$` hay `&` thì shell diễn giải sai và cắt mất chuỗi kết nối.
 #
 # Vì sao cần: Supabase Free KHÔNG có backup tự động. Script chạy pg_dump trong container
 # postgres:17 nên VPS không phải cài client Postgres, và client 17 đọc được server 15-17.
@@ -18,7 +22,12 @@
 # "transaction_timeout"` (tham số của client 17); lỗi đó vô hại, dữ liệu vẫn vào đủ.
 set -eu
 
-: "${DATABASE_URL:?Thiếu DATABASE_URL}"
+if [ -n "${ENV_FILE:-}" ]; then
+  set -- --env-file "$ENV_FILE"
+else
+  : "${DATABASE_URL:?Thiếu DATABASE_URL (hoặc đặt ENV_FILE)}"
+  set -- -e DATABASE_URL
+fi
 dir="${BACKUP_DIR:-/var/backups/travelai}"
 keep="${KEEP:-7}"
 mkdir -p "$dir"
@@ -26,9 +35,9 @@ mkdir -p "$dir"
 file="$dir/travelai-$(date -u +%Y%m%dT%H%M%SZ).dump"
 # Ghi ra tệp tạm rồi mới đổi tên: pg_dump hỏng giữa chừng thì không để lại một bản trông như
 # bản tốt, và vòng xoá bản cũ bên dưới không đếm nó.
-docker run --rm -e PGURL="$DATABASE_URL" postgres:17-alpine \
+docker run --rm "$@" postgres:17-alpine \
   sh -c 'pg_dump --format=custom --no-owner --no-privileges --schema=public \
-    --extension=vector --extension=unaccent "$PGURL"' > "$file.tmp"
+    --extension=vector --extension=unaccent "$DATABASE_URL"' > "$file.tmp"
 mv "$file.tmp" "$file"
 echo "Đã sao lưu: $file ($(wc -c < "$file") byte)"
 

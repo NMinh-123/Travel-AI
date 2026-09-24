@@ -19,12 +19,33 @@ services:
       # Rerank tắt ở giai đoạn thử trên Oracle Free: 20 đoạn mất 5,8 s trên máy dev 20 luồng, trên
       # 2 OCPU ARM sẽ chậm hơn nhiều.
       RERANK_ENABLED: "false"
-    # Chỉ mở ra localhost: reverse proxy (Caddy/nginx) trên cùng máy nhận 443 rồi chuyển vào đây.
+      # Cloudflare → Caddy → Express. Đã đo: Caddy chuyển `X-Forwarded-For: <khách>, <Cloudflare>`,
+      # nên bỏ qua đúng 2 tầng thì ra IP khách. Sai số này là mọi người dùng chung một bộ đếm
+      # rate limit.
+      TRUST_PROXY: "2"
+    # Chỉ mở ra localhost, để gỡ lỗi bằng curl trên chính máy chủ. Khách đi qua `caddy`.
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
     depends_on:
       embedding:
         condition: service_healthy
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    environment:
+      # Dải IP của Cloudflare, do deploy/setup-server.sh ghi vào .env. Thiếu thì dừng, vì Caddyfile
+      # dùng nó để chặn mọi request không đi qua Cloudflare.
+      CF_IPS: ${CF_IPS:?Chạy deploy/setup-server.sh để ghi CF_IPS vào .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Cloudflare Origin Certificate: origin.pem và origin.key (Bước 5), chmod 600.
+      - ./deploy/certs:/certs:ro
+      - caddy-data:/data
+    depends_on:
+      - web
 
   embedding:
     image: ${EMBEDDING_IMAGE:-travel-ai-embedding:local}
@@ -36,3 +57,4 @@ services:
 
 volumes:
   hf-models:
+  caddy-data:
