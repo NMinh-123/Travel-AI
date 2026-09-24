@@ -422,7 +422,6 @@ export const AuthModal: React.FC = () => {
                       required
                       pattern="\d{6}"
                       maxLength={6}
-                      placeholder="6 chữ số trong thư"
                       value={resetCode}
                       onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ''))}
                       className="w-full pl-10 pr-4 py-2.5 text-sm tracking-[0.4em] bg-[#f7faf8] border border-[#bdc9c6] rounded-xl focus:outline-none focus:border-[#005c55] focus:bg-white text-[#181c1c]"
