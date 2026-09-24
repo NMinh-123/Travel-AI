@@ -364,33 +364,150 @@ export interface RouteCheck {
   verified: boolean;
 }
 
+/** Đồ thị vô hướng dựng từ các chặng khung: slug -> (slug kề -> km). Bản xe máy và ô tô cùng số km. */
+const SEGMENT_GRAPH = new Map<string, Map<string, number>>();
+for (const row of ROUTE_SEGMENTS) {
+  for (const [a, b] of [[row.fromSlug, row.toSlug], [row.toSlug, row.fromSlug]]) {
+    const edges = SEGMENT_GRAPH.get(a) ?? new Map<string, number>();
+    edges.set(b, Math.min(edges.get(b) ?? Infinity, row.referenceDistanceKm));
+    SEGMENT_GRAPH.set(a, edges);
+  }
+}
+
+/** Model viết "Lũng Cú" (tên xã) nhưng chặng khung neo vào cột cờ, xem route-segments.ts. */
+const NODE_ALIASES: Record<string, string> = { "lung-cu": "cot-co-lung-cu" };
+
+function graphNode(raw: string): string | null {
+  const slug = slugFor(raw);
+  if (!slug) return null;
+  const node = NODE_ALIASES[slug] ?? slug;
+  return SEGMENT_GRAPH.has(node) ? node : null;
+}
+
+/** Đường ngắn nhất giữa hai nút theo bảng chặng khung (Dijkstra trên đồ thị vài chục cạnh). */
+function shortestPath(from: string, to: string): { km: number; nodes: string[] } | null {
+  const dist = new Map<string, number>([[from, 0]]);
+  const prev = new Map<string, string>();
+  const done = new Set<string>();
+  while (true) {
+    let current: string | null = null;
+    for (const [node, km] of dist) {
+      if (!done.has(node) && (current === null || km < (dist.get(current) as number))) current = node;
+    }
+    if (current === null) return null;
+    if (current === to) {
+      const nodes = [to];
+      while (nodes[0] !== from) nodes.unshift(prev.get(nodes[0]) as string);
+      return { km: dist.get(to) as number, nodes };
+    }
+    done.add(current);
+    for (const [next, km] of SEGMENT_GRAPH.get(current) ?? []) {
+      const candidate = (dist.get(current) as number) + km;
+      if (candidate < (dist.get(next) ?? Infinity)) {
+        dist.set(next, candidate);
+        prev.set(next, current);
+      }
+    }
+  }
+}
+
+/**
+ * Số tham chiếu cho CẢ MỘT NGÀY: đi từ điểm xuất phát, qua lần lượt những điểm dừng có trong bảng
+ * chặng khung, tới điểm kết thúc, mỗi bước theo quãng ngắn nhất.
+ *
+ * Bản trước chỉ tra đúng một chặng khung nối thẳng điểm đầu với điểm cuối, nên một ngày
+ * "Hà Giang → Đồng Văn" (ba chặng nối nhau) không bao giờ đối chiếu được, và lỗi quãng đường chỉ bị
+ * bắt khi nó tình cờ rơi vào một chặng đơn. Đi qua điểm dừng là để tính cả đoạn rẽ nhánh — ngày có
+ * lên cột cờ Lũng Cú rồi quay lại Đồng Văn thì dài hơn hẳn quãng Đồng Văn → Mèo Vạc.
+ */
+function referenceKmFor(day: GeneratedDay): number | null {
+  const start = graphNode(day.startPoint);
+  const end = graphNode(day.endPoint);
+  if (!start || !end) return null;
+
+  const stops = [start, ...day.waypoints.map((wp) => graphNode(wp.title)).filter((n): n is string => n !== null), end]
+    .filter((node, index, list) => index === 0 || node !== list[index - 1]);
+  if (stops.length === 1) return null;
+
+  let total = 0;
+  const walked: string[] = [start];
+  for (let index = 1; index < stops.length; index += 1) {
+    const path = shortestPath(stops[index - 1], stops[index]);
+    if (!path) return null;
+    total += path.km;
+    walked.push(...path.nodes.slice(1));
+  }
+  /**
+   * Đường đi qua ĐIỂM KẾT THÚC trước khi tới đích là bảng chặng thiếu cạnh, không phải lộ trình.
+   *
+   * Đo ngày 2026-09-25: ngày "Du Già → Hà Giang" dừng ở Quản Bạ, bảng không có đoạn Du Già – Yên
+   * Minh, nên đường ngắn nhất tới Quản Bạ đi qua Hà Giang rồi quay ngược lên — 162 km, và số 95 km
+   * hợp lý của model bị thay bằng nó. Không dựng được lộ trình thật thì nói "chưa đối chiếu".
+   * Rẽ vào một ĐƯỜNG CỤT rồi quay ra thì vẫn hợp lệ, kể cả khi lối rẽ nằm ở điểm kết thúc: Yên
+   * Minh → Đồng Văn → cột cờ Lũng Cú → Đồng Văn. Nên gộp các đoạn "X → đường cụt → X" trước khi xét.
+   */
+  const collapsed: string[] = [];
+  for (const node of walked) {
+    const n = collapsed.length;
+    if (n >= 2 && collapsed[n - 2] === node && SEGMENT_GRAPH.get(collapsed[n - 1])?.size === 1) collapsed.pop();
+    else collapsed.push(node);
+  }
+  if (collapsed.slice(1, -1).includes(end)) return null;
+  return total;
+}
+
 /**
  * Đối chiếu quãng đường từng ngày với bảng chặng khung.
  *
- * `referenceDistanceKm` trong @data/realtime/route-segments là ước lượng của người biên tập và
- * TUYỆT ĐỐI không được dùng để trả lời khách — chính file đó nói vậy. Dùng nó ở đây là đúng mục
- * đích đã khai: một con số để ĐỐI CHIẾU, đủ để bắt "Đồng Văn đi Mèo Vạc 150 km".
+ * `referenceDistanceKm` trong @data/realtime/route-segments là ước lượng của người biên tập, dùng
+ * để ĐỐI CHIẾU, đủ để bắt "Đồng Văn đi Mèo Vạc 150 km". Riêng khi model đã được sửa mà vẫn lệch,
+ * `correctRouteDistances` dùng nó thay số của model — một ước lượng có người biên tập chịu trách
+ * nhiệm vẫn tốt hơn một con số đã bị chứng minh là sai.
  */
 export function checkRoutes(days: GeneratedDay[]): RouteCheck[] {
   return days.map((day) => {
-    const from = slugFor(day.startPoint);
-    const to = slugFor(day.endPoint);
-    const segment =
-      from && to
-        ? ROUTE_SEGMENTS.find(
-            (row) =>
-              (row.fromSlug === from && row.toSlug === to) || (row.fromSlug === to && row.toSlug === from),
-          )
-        : undefined;
+    const referenceKm = referenceKmFor(day);
     return {
       day: day.day,
       from: day.startPoint,
       to: day.endPoint,
       claimedKm: day.totalDistanceKm,
-      referenceKm: segment?.referenceDistanceKm ?? null,
-      verified: segment !== undefined,
+      referenceKm,
+      verified: referenceKm !== null,
     };
   });
+}
+
+function isOffReference(check: RouteCheck): boolean {
+  if (check.referenceKm === null || check.claimedKm === null || check.claimedKm <= 0) return false;
+  return Math.abs(check.claimedKm - check.referenceKm) / check.referenceKm > LIMITS.distanceTolerance;
+}
+
+/**
+ * Thay quãng đường lệch bảng chặng khung bằng số tham chiếu. Sửa TẠI CHỖ, trả về các ngày đã sửa.
+ *
+ * Chỉ gọi SAU vòng lặp sửa bằng model: model được cơ hội tự sửa trước. Km cộng dồn của từng điểm
+ * dừng được co giãn cùng tỉ lệ, nếu không thì mốc cuối ngày vẫn ghi con số cũ và hai chỗ trên cùng
+ * một màn hình nói hai điều khác nhau. `totalKm` được cộng lại từ các ngày.
+ */
+export function correctRouteDistances(plan: GeneratedItinerary): RouteCheck[] {
+  const corrected: RouteCheck[] = [];
+  for (const check of checkRoutes(plan.days)) {
+    if (!isOffReference(check)) continue;
+    const day = plan.days.find((row) => row.day === check.day);
+    if (!day) continue;
+    const ratio = (check.referenceKm as number) / (check.claimedKm as number);
+    day.totalDistanceKm = check.referenceKm;
+    for (const wp of day.waypoints) {
+      if (wp.distanceKm !== null) wp.distanceKm = Math.round(wp.distanceKm * ratio);
+    }
+    corrected.push(check);
+  }
+  // Cộng lại cả khi không sửa ngày nào: `TOTAL_KM_MISMATCH` cũng không khởi động lượt sửa model.
+  if (plan.days.every((day) => day.totalDistanceKm !== null)) {
+    plan.totalKm = plan.days.reduce((sum, day) => sum + (day.totalDistanceKm as number), 0);
+  }
+  return corrected;
 }
 
 export interface CheckInput {
@@ -561,15 +678,13 @@ export function checkItinerary(plan: GeneratedItinerary, input: CheckInput): Iti
   }
 
   for (const check of checkRoutes(plan.days)) {
-    if (check.referenceKm === null || check.claimedKm === null || check.claimedKm <= 0) continue;
-    const delta = Math.abs(check.claimedKm - check.referenceKm) / check.referenceKm;
-    if (delta > LIMITS.distanceTolerance) {
-      add(
-        "DISTANCE_OFF_REFERENCE",
-        `Chặng ${check.from} → ${check.to} ghi ${check.claimedKm} km, lệch ${(delta * 100).toFixed(0)}% so với ${check.referenceKm} km trong bảng chặng khung.`,
-        check.day,
-      );
-    }
+    if (!isOffReference(check)) continue;
+    const delta = Math.abs((check.claimedKm as number) - (check.referenceKm as number)) / (check.referenceKm as number);
+    add(
+      "DISTANCE_OFF_REFERENCE",
+      `Chặng ${check.from} → ${check.to} ghi ${check.claimedKm} km, lệch ${(delta * 100).toFixed(0)}% so với ${check.referenceKm} km theo bảng chặng khung (tính qua các điểm dừng của ngày).`,
+      check.day,
+    );
   }
 
   return issues;

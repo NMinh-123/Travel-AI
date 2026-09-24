@@ -39,7 +39,12 @@ export interface LodgingOption {
    */
   priceStale: boolean;
   priceAsOf: string;
+  /** Trung điểm khoảng giá, để so rẻ hay đắt; `null` khi cơ sở chưa có giá. */
+  priceMidVnd: number | null;
 }
+
+/** Mức ngân sách của khách, cùng tập giá trị với `ItineraryRequest["budget"]`. */
+export type LodgingBudget = "backpacker" | "comfort" | "luxury";
 
 /** "250.000đ – 800.000đ/đêm". Khoảng bằng nhau thì in một số cho gọn. */
 function priceLabel(place: Place): string {
@@ -84,6 +89,7 @@ export const LODGING_OPTIONS: LodgingOption[] = LODGING_PLACES.map((place) => {
     priceLabel: priceLabel(place),
     priceStale: freshness.stale,
     priceAsOf: freshness.asOf,
+    priceMidVnd: place.price ? (place.price.minVnd + place.price.maxVnd) / 2 : null,
   };
 });
 
@@ -192,7 +198,24 @@ interface LodgingDay {
  * thì đánh dấu "chưa chốt" thay vì giữ tên bịa — nói với khách rằng chỗ nghỉ chưa xác định là
  * trung thực, còn giới thiệu một homestay không tồn tại thì không.
  */
-export function enforceLodging(plan: { days?: LodgingDay[] }): LodgingEnforcement {
+/**
+ * Cơ sở cùng vùng hợp với mức ngân sách hơn: rẻ nhất cho "tiết kiệm", đắt nhất cho "cao cấp".
+ *
+ * Đo ngày 2026-09-25 trên production: khách chọn "tiết kiệm" mà đêm thứ hai được xếp vào homestay
+ * 858.000đ/đêm, đắt nhất cả chuyến. Danh mục trong lời nhắc có giá nhưng model không bị buộc chọn
+ * theo nó, nên việc này phải do code làm. Mức "tiện nghi" giữ lựa chọn của model.
+ */
+function fitBudget(option: LodgingOption, budget: LodgingBudget | undefined, used: Set<string>): LodgingOption {
+  if (!budget || budget === "comfort" || option.priceMidVnd === null) return option;
+  const sameArea = LODGING_OPTIONS.filter(
+    (o) => o.areaName === option.areaName && o.priceMidVnd !== null && (o.slug === option.slug || !used.has(o.slug)),
+  );
+  const pick = budget === "backpacker" ? Math.min : Math.max;
+  const target = pick(...sameArea.map((o) => o.priceMidVnd as number));
+  return sameArea.find((o) => o.priceMidVnd === target) ?? option;
+}
+
+export function enforceLodging(plan: { days?: LodgingDay[] }, budget?: LodgingBudget): LodgingEnforcement {
   const days: LodgingDay[] = Array.isArray(plan?.days) ? plan.days : [];
   const used = new Set<string>();
   const result: LodgingEnforcement = { replaced: 0, unresolved: 0, rejectedNames: [] };
@@ -230,6 +253,7 @@ export function enforceLodging(plan: { days?: LodgingDay[] }): LodgingEnforcemen
       return;
     }
 
+    option = fitBudget(option, budget, used);
     used.add(option.slug);
     day.eveningStay = {
       name: option.name,

@@ -15,7 +15,7 @@ import {
   type CostBreakdown, type RiderType, type StayStyle,
 } from "@server/domain/costs";
 import {
-  checkItinerary, checkRoutes, compareIssueSets, describeIssues, parseItinerary,
+  checkItinerary, checkRoutes, compareIssueSets, correctRouteDistances, describeIssues, parseItinerary,
   type GeneratedItinerary, type ItineraryIssue, type RouteCheck,
 } from "@server/domain/itineraryCheck";
 
@@ -55,6 +55,15 @@ export class ItineraryGenerationError extends Error {
  * Không có trần thì một lịch trình model không sửa nổi sẽ quay vòng mãi.
  */
 const MAX_REPAIR_ATTEMPTS = 2;
+
+/**
+ * Lỗi mà `correctRouteDistances` tự sửa sau vòng lặp, nên một mình chúng KHÔNG khởi động lượt sửa.
+ *
+ * Mỗi lượt sửa là thêm 30–40 giây vào một thao tác vốn đã chậm nhất hệ thống (đo 62–80 giây trên
+ * production ngày 2026-09-25), để model đổi một con số mà code thay được ngay bằng số tham chiếu.
+ * Có lỗi khác khiến vòng lặp chạy thì chúng vẫn nằm trong danh sách gửi model, không mất đi.
+ */
+const CODE_FIXED = new Set(["DISTANCE_OFF_REFERENCE", "TOTAL_KM_MISMATCH"]);
 
 export interface ItineraryValidation {
   valid: boolean;
@@ -178,7 +187,8 @@ function stayCostFromPlan(plan: GeneratedItinerary): { amount: number; nights: n
     // Lấy trung điểm khoảng giá: cận dưới là hứa hẹn quá tay, cận trên thì doạ khách.
     amount += (price.minVnd + price.maxVnd) / 2;
   }
-  return { amount: Math.round(amount), nights: nights.length };
+  // Tròn tới nghìn đồng như nhãn giá: "958.548đ" hứa một độ chính xác mà giá tham khảo không có.
+  return { amount: Math.round(amount / 1000) * 1000, nights: nights.length };
 }
 
 /**
@@ -357,7 +367,7 @@ async function generateOnce(contents: string, request: ItineraryRequest, deps: I
    * sẽ báo hàng loạt lỗi mà hệ thống tự vá được, và vòng lặp sửa sẽ tiêu một lượt gọi model cho
    * việc code vừa làm xong.
    */
-  const lodging = enforceLodging(plan);
+  const lodging = enforceLodging(plan, request.budget);
   if (lodging.rejectedNames.length) {
     // Ghi log tên bị loại: đây là bằng chứng model đang bịa, và là cách duy nhất để biết danh mục
     // đang thiếu vùng nào. Chính log này đã chỉ ra rằng danh mục không có cơ sở nào ở Yên Minh.
@@ -406,7 +416,7 @@ export async function generateItinerary(
    * hai lượt gọi model đắt nhất hệ thống cho một việc chắc chắn không xong.
    */
   const repairable = (issues: ItineraryIssue[]): ItineraryIssue[] =>
-    issues.filter((issue) => issue.kind !== "unverified");
+    issues.filter((issue) => issue.kind !== "unverified" && !CODE_FIXED.has(issue.code));
 
   while (repairable(attempt.issues).length && used <= MAX_REPAIR_ATTEMPTS) {
     console.warn(
@@ -445,13 +455,30 @@ export async function generateItinerary(
     else break;
   }
 
+  /**
+   * Quãng đường model sửa mãi vẫn lệch thì thay bằng số tham chiếu, thay vì chỉ cảnh báo.
+   *
+   * Đo ngày 2026-09-25 trên production: "Đồng Văn → Mèo Vạc 110 km" (thật 22 km) đi ra màn hình với
+   * một khung cảnh báo vàng mà khách dễ bỏ qua. `routes` giữ số GỐC của model để còn tra được.
+   */
+  const routes = checkRoutes(attempt.plan.days);
+  const corrected = correctRouteDistances(attempt.plan);
+  if (corrected.length) {
+    console.warn(
+      `Lịch trình: thay quãng đường lệch bảng chặng khung ở ${corrected
+        .map((row) => `ngày ${row.day} (${row.claimedKm} → ${row.referenceKm} km)`)
+        .join(", ")}.`,
+    );
+  }
+  attempt = { ...attempt, issues: checkItinerary(attempt.plan, { days: request.days }) };
+
   const plan: ValidatedItinerary = {
     ...attempt.plan,
     validation: {
       valid: attempt.issues.length === 0,
       issues: attempt.issues,
       attempts: used,
-      routes: checkRoutes(attempt.plan.days),
+      routes,
     },
     cost: computeCost(request, attempt.plan),
   };

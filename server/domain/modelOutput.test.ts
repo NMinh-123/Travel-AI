@@ -112,6 +112,29 @@ describe("IT-MO-03: địa điểm và cơ sở lưu trú BỊA", () => {
     expect(plan.days[0].eveningStay.priceEstimate).toBe(real!.priceLabel);
   });
 
+  it("mức tiết kiệm lấy cơ sở rẻ nhất cùng vùng, cao cấp lấy đắt nhất, tiện nghi giữ lựa chọn", () => {
+    // Vùng có ít nhất hai cơ sở khác giá — đúng ca "tiết kiệm mà ngủ homestay 858.000đ".
+    const areas = [...new Set(LODGING_OPTIONS.map((o) => o.areaName))];
+    const area = areas.find((name) => new Set(LODGING_OPTIONS.filter((o) => o.areaName === name && o.priceMidVnd !== null).map((o) => o.priceMidVnd)).size > 1);
+    expect(area).toBeDefined();
+    const inArea = LODGING_OPTIONS.filter((o) => o.areaName === area && o.priceMidVnd !== null)
+      .sort((a, b) => (a.priceMidVnd as number) - (b.priceMidVnd as number));
+    const [cheapest, priciest] = [inArea[0], inArea.at(-1)!];
+    const planFor = (name: string) => ({ days: [{ endPoint: area, eveningStay: { name } }, { endPoint: "Thành phố Hà Giang", eveningStay: { name: "x" } }] });
+
+    const thrift = planFor(priciest.name);
+    enforceLodging(thrift, "backpacker");
+    expect(thrift.days[0].eveningStay.name).toBe(cheapest.name);
+
+    const luxury = planFor(cheapest.name);
+    enforceLodging(luxury, "luxury");
+    expect(luxury.days[0].eveningStay.name).toBe(priciest.name);
+
+    const comfort = planFor(priciest.name);
+    enforceLodging(comfort, "comfort");
+    expect(comfort.days[0].eveningStay.name).toBe(priciest.name);
+  });
+
   it("không tìm được cơ sở nào trong vùng thì nói CHƯA CHỐT, không giữ tên bịa", () => {
     const plan = {
       days: [

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  checkItinerary, checkRoutes, compareIssueSets, describeIssues, isKnownPlace, minutesOfDay,
+  checkItinerary, checkRoutes, compareIssueSets, correctRouteDistances, describeIssues, isKnownPlace, minutesOfDay,
   parseItinerary, severityOf,
   type GeneratedDay, type GeneratedItinerary, type ItineraryIssue,
 } from "./itineraryCheck";
@@ -214,6 +214,42 @@ describe("KL-05: quãng đường đối chiếu bảng chặng khung", () => {
     const known = checkRoutes([day({ startPoint: "Quản Bạ", endPoint: "Yên Minh" })]);
     expect(known[0].verified).toBe(true);
     expect(known[0].referenceKm).toBe(50);
+  });
+
+  it("ghép nhiều chặng liền nhau cho một ngày dài", () => {
+    // 46 + 50 + 45: trước đây ngày này luôn "chưa đối chiếu" vì không có chặng khung nối thẳng.
+    const [check] = checkRoutes([day({ startPoint: "Thành phố Hà Giang", endPoint: "Đồng Văn", waypoints: [] })]);
+    expect(check.referenceKm).toBe(141);
+  });
+
+  it("tính cả đoạn rẽ nhánh qua điểm dừng", () => {
+    const wp = (title: string) => ({ time: "08:00", title, subtitle: "", distanceKm: null, elevationM: null, type: "ride", highlight: "", aiTip: "" });
+    const [plain] = checkRoutes([day({ startPoint: "Đồng Văn", endPoint: "Mèo Vạc", waypoints: [wp("Đèo Mã Pí Lèng")] })]);
+    const [detour] = checkRoutes([day({ startPoint: "Đồng Văn", endPoint: "Mèo Vạc", waypoints: [wp("Cột cờ Lũng Cú"), wp("Đèo Mã Pí Lèng")] })]);
+    expect(plain.referenceKm).toBe(22);
+    expect(detour.referenceKm).toBe(26 + 26 + 22);
+
+    // Bảng không có Du Già – Yên Minh: tới Quản Bạ phải đi qua Hà Giang rồi quay lên. Đó là thiếu
+    // cạnh, không phải lộ trình, nên phải "chưa đối chiếu" thay vì ra 162 km rồi sửa số của model.
+    const [gap] = checkRoutes([day({ startPoint: "Du Già", endPoint: "Thành phố Hà Giang", waypoints: [wp("Cổng Trời Quản Bạ"), wp("Quản Bạ")] })]);
+    expect(gap.referenceKm).toBeNull();
+
+    // Còn rẽ lên đường cụt Lũng Cú ngay tại điểm kết thúc thì vẫn là lộ trình thật.
+    const [spur] = checkRoutes([day({ startPoint: "Yên Minh", endPoint: "Đồng Văn", waypoints: [wp("Cột cờ Lũng Cú")] })]);
+    expect(spur.referenceKm).toBe(45 + 26 + 26);
+  });
+
+  it("thay quãng đường lệch bằng số tham chiếu, co giãn km của điểm dừng", () => {
+    const broken = plan({
+      totalKm: 510,
+      days: [day({ startPoint: "Quản Bạ", endPoint: "Yên Minh", totalDistanceKm: 200 }), lastDay({ totalDistanceKm: 310 })],
+    });
+    const corrected = correctRouteDistances(broken);
+    expect(corrected.map((row) => row.day)).toContain(1);
+    expect(broken.days[0].totalDistanceKm).toBe(50);
+    expect(broken.days[0].waypoints.at(-1)?.distanceKm).toBe(24); // 96 × 50/200
+    expect(broken.totalKm).toBe(broken.days.reduce((sum, row) => sum + (row.totalDistanceKm ?? 0), 0));
+    expect(codes(checkItinerary(broken, INPUT))).not.toContain("DISTANCE_OFF_REFERENCE");
   });
 });
 

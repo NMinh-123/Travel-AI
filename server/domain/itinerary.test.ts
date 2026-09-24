@@ -54,6 +54,7 @@ function broken(): GeneratedItinerary {
 function worse(): GeneratedItinerary {
   return {
     ...broken(),
+    title: "Bản sửa tệ hơn",
     totalKm: 9999,
   };
 }
@@ -106,7 +107,8 @@ describe("KT-02: vòng lặp sửa", () => {
     const stub = deps([broken(), worse(), valid()]);
     const { plan } = await generateItinerary(REQUEST, stub);
     expect(stub.calls).toBe(2);
-    expect(plan.totalKm).toBe(192);
+    // So theo tiêu đề chứ không theo totalKm: quãng đường lệch bảng chặng giờ được tính lại cho cả hai bản.
+    expect(plan.title).not.toBe("Bản sửa tệ hơn");
     expect(plan.validation.valid).toBe(false);
   });
 
