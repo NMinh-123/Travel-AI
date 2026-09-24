@@ -1,0 +1,30 @@
+# Reverse proxy trước `web`. Xem claude_production.md, Bước 4 và 5.
+#
+# Cloudflare → Caddy (443, Cloudflare Origin Certificate) → web:3000.
+#
+# CF_IPS: danh sách dải IP của Cloudflare, ngăn cách bằng dấu cách, do deploy/setup-server.sh lấy
+# từ https://www.cloudflare.com/ips-v4 và ips-v6 rồi ghi vào .env. Caddy thay {$CF_IPS} trước khi
+# đọc cấu hình, nên mỗi dải thành một tham số.
+{
+	# Không xin chứng chỉ Let's Encrypt: TLS giữa Cloudflare và máy chủ dùng Origin Certificate
+	# nạp từ tệp ở dưới, còn chứng chỉ công khai là của Cloudflare.
+	auto_https off
+	servers {
+		# Chỉ tin X-Forwarded-For khi request đến TỪ Cloudflare. Khi đó Caddy giữ header Cloudflare
+		# gửi (IP thật của khách) và nối thêm IP của máy Cloudflare, nên Express phải đặt
+		# TRUST_PROXY=2 (Caddy + Cloudflare) để lấy đúng IP khách cho rate limit.
+		trusted_proxies static {$CF_IPS}
+	}
+}
+
+:443 {
+	tls /certs/origin.pem /certs/origin.key
+
+	# Gọi thẳng vào IP máy chủ mà không qua Cloudflare thì đóng kết nối, không trả gì. Firewall
+	# (Security List của Oracle) nên chặn cả ở tầng mạng; đây là lớp thứ hai, và là lớp duy nhất
+	# chắc chắn có hiệu lực với cổng do Docker mở, vốn đi vòng qua chain INPUT của iptables.
+	@not_cloudflare not remote_ip {$CF_IPS}
+	abort @not_cloudflare
+
+	reverse_proxy web:3000
+}
