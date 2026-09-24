@@ -16,10 +16,13 @@ BACKUP_DIR=/var/backups/travelai
 
 [ "$(id -u)" -eq 0 ] || { echo "Chạy bằng sudo: sudo sh setup-server.sh" >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
+# Chờ tối đa 10 phút nếu apt đang bận: máy mới thường đang chạy lượt unattended-upgrades đầu tiên
+# (chính bước 1 bật nó), và apt-get mặc định thì báo lỗi khoá rồi thoát ngay.
+apt_get() { apt-get -o DPkg::Lock::Timeout=600 "$@"; }
 
 echo "== 1/6 Cập nhật bảo mật tự động"
-apt-get update -q
-apt-get install -y -q unattended-upgrades ca-certificates curl git cron
+apt_get update -q
+apt_get install -y -q unattended-upgrades ca-certificates curl git cron
 # Bật hai dòng APT::Periodic trong /etc/apt/apt.conf.d/20auto-upgrades.
 dpkg-reconfigure -f noninteractive unattended-upgrades
 
@@ -41,19 +44,27 @@ if ! id "$DEPLOY_USER" >/dev/null 2>&1; then
 fi
 usermod -aG docker "$DEPLOY_USER"
 install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh"
-# Dùng lại khoá SSH đã khai lúc tạo instance (nằm ở user ubuntu), để đăng nhập được ngay.
-if [ ! -s "/home/$DEPLOY_USER/.ssh/authorized_keys" ] && [ -s /home/ubuntu/.ssh/authorized_keys ]; then
-  install -m 600 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /home/ubuntu/.ssh/authorized_keys \
-    "/home/$DEPLOY_USER/.ssh/authorized_keys"
+# Dùng lại khoá SSH đã có trên máy để đăng nhập được ngay: Oracle đặt khoá ở user `ubuntu`, còn
+# VPS Việt Nam thường chỉ có `root`.
+if [ ! -s "/home/$DEPLOY_USER/.ssh/authorized_keys" ]; then
+  for src in /home/ubuntu/.ssh/authorized_keys /root/.ssh/authorized_keys; do
+    if [ -s "$src" ]; then
+      install -m 600 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$src" "/home/$DEPLOY_USER/.ssh/authorized_keys"
+      break
+    fi
+  done
 fi
 [ -s "/home/$DEPLOY_USER/.ssh/authorized_keys" ] || {
   echo "Chưa có khoá SSH cho $DEPLOY_USER. Dừng trước khi tắt đăng nhập mật khẩu để không tự khoá mình ngoài." >&2
   exit 1
 }
+# Root vẫn vào được BẰNG KHOÁ (prohibit-password), chỉ mật khẩu bị tắt. Tắt hẳn root là việc
+# làm tay SAU KHI đã đăng nhập thử được bằng user deploy — tắt ngay trong script thì một lỗi ở
+# bước chép khoá là tự khoá mình ngoài máy.
 cat > /etc/ssh/sshd_config.d/10-travel-ai.conf <<'EOF'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
-PermitRootLogin no
+PermitRootLogin prohibit-password
 EOF
 # Ubuntu 24.04 bật SSH theo socket activation: ssh.service có thể chưa chạy lần nào, nên
 # /run/sshd chưa có (sshd -t báo "Missing privilege separation directory") và `reload` sẽ lỗi.
@@ -61,6 +72,25 @@ EOF
 mkdir -p /run/sshd
 sshd -t
 systemctl try-reload-or-restart ssh
+
+echo "== 3b/6 Firewall (ufw)"
+# Cổng SSH đọc từ cấu hình đang chạy, không đoán là 22: VPS Việt Nam hay đổi cổng (ví dụ 24700),
+# và bật ufw mà quên đúng cổng đó là tự khoá mình ngoài máy.
+ssh_port=$(sshd -T 2>/dev/null | awk '$1 == "port" {print $2; exit}')
+case "$ssh_port" in
+  ''|*[!0-9]*) echo "Không đọc được cổng SSH — dừng trước khi bật ufw." >&2; exit 1 ;;
+esac
+apt_get install -y -q ufw
+ufw allow "$ssh_port/tcp" comment 'ssh'
+# 443 do Docker mở cho Caddy. Cổng Docker đi vòng qua ufw nên dòng này chỉ để đọc cho rõ; lớp
+# chặn request không đến từ Cloudflare nằm ở Caddy.
+ufw allow 443/tcp comment 'https (Cloudflare -> Caddy)'
+ufw default deny incoming
+ufw default allow outgoing
+ufw --force enable
+# `ufw enable` chỉ bật cho phiên này. Image của nhà cung cấp VPS (đã gặp ngày 2026-09-24) để
+# ufw.service ở trạng thái disabled, nên sau khi khởi động lại máy chạy KHÔNG có firewall.
+systemctl enable --now ufw
 
 echo "== 4/6 Mã nguồn ở $APP_DIR"
 if [ ! -d "$APP_DIR/.git" ]; then

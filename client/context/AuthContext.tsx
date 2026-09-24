@@ -44,8 +44,9 @@ interface AuthContextType {
   googleClientId: string | null;
   openAuthModal: (tab?: 'login' | 'register') => void;
   closeAuthModal: () => void;
-  loginWithEmail: (email: string, password: string) => Promise<MutationResult>;
-  registerWithEmail: (name: string, email: string, password: string) => Promise<MutationResult>;
+  /** `turnstileToken` chỉ có khi server bật Turnstile — xem AuthModal. */
+  loginWithEmail: (email: string, password: string, turnstileToken?: string) => Promise<MutationResult>;
+  registerWithEmail: (name: string, email: string, password: string, turnstileToken?: string) => Promise<MutationResult>;
   /** `credential` là ID token do Google Identity Services trả về, server xác thực lại. */
   loginWithGoogle: (credential: string) => Promise<MutationResult>;
   logout: () => Promise<void>;
@@ -163,14 +164,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 
   const loginWithEmail = useCallback(
-    (email: string, password: string) =>
-      authenticate('/api/auth/login', { email, password }, 'Đăng nhập không thành công'),
+    (email: string, password: string, turnstileToken?: string) =>
+      authenticate('/api/auth/login', { email, password, turnstileToken }, 'Đăng nhập không thành công'),
     [authenticate]
   );
 
   const registerWithEmail = useCallback(
-    (name: string, email: string, password: string) =>
-      authenticate('/api/auth/register', { name, email, password }, 'Đăng ký không thành công'),
+    (name: string, email: string, password: string, turnstileToken?: string) =>
+      authenticate('/api/auth/register', { name, email, password, turnstileToken }, 'Đăng ký không thành công'),
     [authenticate]
   );
 

@@ -71,6 +71,16 @@ async function startServer() {
      * cùng nhánh dist; trỏ express.static vào cả dist sẽ công khai luôn mã nguồn server.
      */
     const distPath = path.join(process.cwd(), "dist", "client");
+    /**
+     * File trong /assets/ có hash nội dung trong tên (Vite đặt), nên cache một năm là an toàn:
+     * deploy mới thì tên đổi. Không đặt vậy thì Express gửi max-age=0 và Cloudflare hỏi lại máy
+     * chủ ở MỌI lượt tải (đo được: MISS rồi REVALIDATED). index.html giữ mặc định để luôn lấy
+     * bản mới, vì nó là thứ trỏ tới các tên file mới đó.
+     */
+    app.use(
+      "/assets",
+      express.static(path.join(distPath, "assets"), { immutable: true, maxAge: "365d", fallthrough: false }),
+    );
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));

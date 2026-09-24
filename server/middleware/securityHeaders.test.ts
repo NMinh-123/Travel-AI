@@ -74,6 +74,14 @@ describe("KB-02: CSP khớp đúng các nguồn ngoài mà trang thật sự dù
     expect(csp).toContain("https://fonts.gstatic.com");
   });
 
+  it("cho phép script và iframe của Cloudflare Turnstile ở form đăng nhập", async () => {
+    const { csp } = await loadHeaders({ NODE_ENV: "production" });
+
+    const directive = (name: string) => csp.split(";").map((part) => part.trim()).find((part) => part.startsWith(name)) ?? "";
+    expect(directive("script-src")).toContain("https://challenges.cloudflare.com");
+    expect(directive("frame-src")).toContain("https://challenges.cloudflare.com");
+  });
+
   it("chặn nhúng iframe và plugin, giới hạn base-uri", async () => {
     const { csp } = await loadHeaders({ NODE_ENV: "production" });
 

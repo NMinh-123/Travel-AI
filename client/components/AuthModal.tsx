@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { Logo } from './Logo';
 import { loadGoogleIdentity } from '@client/lib/googleIdentity';
+import { loadAppConfig } from '@client/lib/appConfig';
+import { loadTurnstile } from '@client/lib/turnstile';
 
 /**
  * Logo Google, vẽ inline thay vì tải ảnh: nút đăng nhập là thứ hiện ra sớm nhất trong hộp
@@ -58,6 +60,49 @@ export const AuthModal: React.FC = () => {
    * được render ra làm đường vào dự phòng — xấu hơn nhưng luôn chạy.
    */
   const [needsNativeButton, setNeedsNativeButton] = useState(false);
+
+  /**
+   * Cloudflare Turnstile. Chỉ hiện khi server bật (có đủ hai khoá); `turnstileSiteKey` null thì
+   * form chạy như trước. Mỗi token dùng được một lần, nên sau mỗi lần gửi phải reset widget để
+   * lấy token mới — không thì lần thử thứ hai luôn bị server từ chối.
+   */
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
+
+  useEffect(() => {
+    void loadAppConfig().then((appConfig) => setTurnstileSiteKey(appConfig.turnstileSiteKey));
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthModalOpen || !turnstileSiteKey) return;
+
+    let cancelled = false;
+    loadTurnstile()
+      .then((turnstile) => {
+        const container = turnstileRef.current;
+        if (cancelled || !container) return;
+        turnstileWidgetId.current = turnstile.render(container, {
+          sitekey: turnstileSiteKey,
+          callback: setTurnstileToken,
+          'expired-callback': () => setTurnstileToken(null),
+          'error-callback': () => setTurnstileToken(null),
+          language: 'vi',
+        });
+      })
+      .catch((error: unknown) => {
+        console.error('Không nạp được Turnstile:', error);
+        setErrorMessage('Không tải được bước xác minh chống bot. Kiểm tra kết nối rồi tải lại trang.');
+      });
+
+    return () => {
+      cancelled = true;
+      if (turnstileWidgetId.current) window.turnstile?.remove(turnstileWidgetId.current);
+      turnstileWidgetId.current = null;
+      setTurnstileToken(null);
+    };
+  }, [isAuthModalOpen, turnstileSiteKey]);
 
   const handleGoogleCredential = useCallback(
     async (credential?: string) => {
@@ -154,16 +199,21 @@ export const AuthModal: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    if (turnstileSiteKey && !turnstileToken) {
+      setErrorMessage('Vui lòng hoàn tất bước xác minh chống bot bên dưới.');
+      return;
+    }
     setIsSubmitting(true);
+    const token = turnstileToken ?? undefined;
 
     try {
       if (authModalTab === 'login') {
-        const res = await loginWithEmail(email, password);
+        const res = await loginWithEmail(email, password, token);
         if (!res.success) {
           setErrorMessage(res.error || 'Đăng nhập không thành công');
         }
       } else {
-        const res = await registerWithEmail(name, email, password);
+        const res = await registerWithEmail(name, email, password, token);
         if (!res.success) {
           setErrorMessage(res.error || 'Đăng ký không thành công');
         }
@@ -172,6 +222,10 @@ export const AuthModal: React.FC = () => {
       setErrorMessage('Đã xảy ra lỗi kết nối. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
+      // Token vừa gửi đã hết hiệu lực, dù kết quả là gì. Đăng nhập thành công thì hộp thoại đóng
+      // và widget bị gỡ ở effect phía trên; thất bại thì cần một token mới cho lần thử sau.
+      if (turnstileWidgetId.current) window.turnstile?.reset(turnstileWidgetId.current);
+      setTurnstileToken(null);
     }
   };
 
@@ -351,6 +405,8 @@ export const AuthModal: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {turnstileSiteKey && <div ref={turnstileRef} className="flex justify-center pt-1" />}
 
             <button
               type="submit"

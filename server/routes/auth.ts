@@ -7,6 +7,7 @@ import { clearSession, issueSession, optionalUserId } from "@server/middleware/a
 import { MIN_PASSWORD_LENGTH, hashPassword, verifyPassword } from "@server/domain/password";
 import { toUserProfile, userWithRelations } from "@server/domain/mappers";
 import { rateLimit } from "@server/middleware/rateLimit";
+import { requireTurnstile } from "@server/middleware/turnstile";
 import { consume, peek } from "@server/infra/rateLimitStore";
 import { asyncRoute } from "@server/middleware/asyncHandler";
 
@@ -52,6 +53,7 @@ function parseCredentials(body: any, requireName: boolean): Credentials | string
 authRouter.post(
   "/register",
   authLimiter,
+  requireTurnstile,
   asyncRoute(async (req: Request, res: Response) => {
     const parsed = parseCredentials(req.body, true);
     if (typeof parsed === "string") return res.status(400).json({ error: parsed });
@@ -114,6 +116,7 @@ function loginFailureKey(email: string): string {
 authRouter.post(
   "/login",
   authLimiter,
+  requireTurnstile,
   asyncRoute(async (req: Request, res: Response) => {
     const parsed = parseCredentials(req.body, false);
     if (typeof parsed === "string") {

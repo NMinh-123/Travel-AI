@@ -4,9 +4,9 @@ import { apiRequest } from '@client/lib/api';
  * Cấu hình công khai mà server gửi xuống trình duyệt qua GET /api/config.
  *
  * "Công khai" ở đây là theo đúng nghĩa đen: mọi thứ trong kiểu này đều nằm lộ thiên trong mã
- * nguồn trang và ai mở DevTools cũng đọc được. Đó là lý do chỉ hai giá trị này được phép có
- * mặt — cả hai đều là loại khoá được thiết kế để công khai và được giới hạn ở phía Google bằng
- * HTTP referrer, chứ không phải bằng việc giấu chúng đi.
+ * nguồn trang và ai mở DevTools cũng đọc được. Đó là lý do chỉ ba giá trị này được phép có
+ * mặt — tất cả đều là loại khoá được thiết kế để công khai và được giới hạn theo tên miền ở
+ * phía Google hay Cloudflare, chứ không phải bằng việc giấu chúng đi.
  *
  * KHÔNG BAO GIỜ thêm vào đây khoá của tầng máy chủ: `GOOGLE_MAPS_API_KEY` gọi được Routes và
  * Places và tính tiền theo lượt, `GEMINI_API_KEY` gọi được model. Một trường thêm vào file này
@@ -21,9 +21,11 @@ export interface AppConfig {
    * hay đường không khoá, chứ không còn quyết định CÓ bản đồ hay không.
    */
   googleMapsEmbedKey: string | null;
+  /** null khi server chưa cấu hình đủ hai khoá Turnstile — khi đó form đăng nhập không hiện widget. */
+  turnstileSiteKey: string | null;
 }
 
-const EMPTY: AppConfig = { googleClientId: null, googleMapsEmbedKey: null };
+const EMPTY: AppConfig = { googleClientId: null, googleMapsEmbedKey: null, turnstileSiteKey: null };
 
 /**
  * Promise dùng chung cho cả vòng đời trang.
