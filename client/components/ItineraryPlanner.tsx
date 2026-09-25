@@ -592,7 +592,16 @@ const ItineraryPlannerView: React.FC<ItineraryPlannerProps & { preset: PresetIti
             {/* Bottom Actions */}
             <div className="mt-8 pt-6 border-t border-[#e0e3e1] flex flex-wrap items-center justify-between gap-4">
               <button
-                onClick={() => onAskAI(`Hãy tư vấn chi tiết hơn về các điểm dừng trong Ngày ${activeDay} của cung đường Hà Giang`)}
+                onClick={() => {
+                  // Chat không thấy lịch trình ở trang này, nên câu hỏi phải tự mang nội dung ngày đó.
+                  const stops = currentDayData.waypoints.map(wp => wp.title).filter(Boolean).join(', ');
+                  const stay = currentDayData.eveningStay?.name ? ` Nghỉ đêm tại ${currentDayData.eveningStay.name}.` : '';
+                  onAskAI(
+                    `Hãy tư vấn chi tiết hơn về các điểm dừng trong Ngày ${currentDayData.day} lịch trình của mình: ` +
+                    `${currentDayData.title} (${currentDayData.startPoint} → ${currentDayData.endPoint}).` +
+                    `${stops ? ` Các điểm dừng: ${stops}.` : ''}${stay}`
+                  );
+                }}
                 className="flex items-center gap-2 text-xs font-semibold text-[#0051d5] hover:underline"
               >
                 <Sparkles className="w-4 h-4" />
