@@ -51,6 +51,8 @@ export interface Slots {
   temporal?: TemporalContext;
   stayStyle?: "dorm" | "private_room" | "ecolodge";
   notes?: string;
+  /** Bản tóm tắt lịch trình gần nhất, do tác tử itinerary đặt — KHÔNG phải slot NLU trích xuất. */
+  lastItinerary?: string;
 }
 
 export const SLOT_KEYS: (keyof Slots)[] = [
@@ -137,7 +139,7 @@ export type TurnEvent =
   | { type: "delta"; text: string }
   | { type: "reset" };
 
-export interface EscalationRequest {
+interface EscalationRequest {
   reason: EscalationReason;
   summary: string;
 }
@@ -217,7 +219,7 @@ export interface TurnTrace {
   retrieval?: RetrievalMetrics;
 }
 
-export type TraceNodeName =
+type TraceNodeName =
   | "nlu" | "temporal" | "rewrite" | "place_resolve" | "route" | "slot_gate"
   | "agent" | "tool" | "guardrail" | "respond" | "escalate";
 

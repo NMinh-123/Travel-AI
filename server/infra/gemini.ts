@@ -589,7 +589,7 @@ export function partialReplyText(raw: string): string {
   return decodeJsonStringPrefix(body.slice(match.index + match[0].length));
 }
 
-export interface StreamingCall extends StructuredCall {
+interface StreamingCall extends StructuredCall {
   /** Nhận từng đoạn chữ MỚI của `reply`, đã giải mã, theo đúng thứ tự. */
   onDelta?: (text: string) => void;
   /**

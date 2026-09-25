@@ -90,9 +90,9 @@ const RENAMES: [RegExp, string][] = [
   [new RegExp(`${BEFORE}cao nguyên đá(?!\\s+đồng văn)${AFTER}`, "giu"), "cao nguyên đá Đồng Văn"],
 ];
 
-export type RewriteKind = "abbreviation" | "rename" | "anaphora" | "ellipsis";
+type RewriteKind = "abbreviation" | "rename" | "anaphora" | "ellipsis";
 
-export interface RewriteInput {
+interface RewriteInput {
   message: string;
   /**
    * Địa danh đã nhắc ở các lượt TRƯỚC, mới nhất đứng đầu.
@@ -104,7 +104,7 @@ export interface RewriteInput {
   carriedPlaces?: string[];
 }
 
-export interface RewriteResult {
+interface RewriteResult {
   /** Câu dùng cho truy xuất. Bằng đúng `message` khi không có phép nào áp dụng. */
   query: string;
   /** Những phép đã áp dụng, để đo riêng từng nhóm. Rỗng nghĩa là câu đi thẳng, không qua xử lý. */

@@ -13,7 +13,6 @@ import { prisma } from "@server/infra/db";
  */
 
 const SESSION_COOKIE = "travel_ai_session";
-const SESSION_DAYS = 7;
 /** Ghim thuật toán lúc verify, để token ký bằng thuật toán khác (HS512, none...) bị từ chối. */
 const SESSION_ALGORITHM = "HS256";
 
@@ -34,14 +33,14 @@ interface SessionPayload {
 export function issueSession(res: Response, userId: string, sessionVersion: number): void {
   const token = jwt.sign({ sub: userId, ver: sessionVersion } satisfies SessionPayload, config.jwtSecret, {
     algorithm: SESSION_ALGORITHM,
-    expiresIn: `${SESSION_DAYS}d`,
+    expiresIn: `${config.sessionDays}d`,
   });
 
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: config.isProduction,
-    maxAge: SESSION_DAYS * 24 * 60 * 60 * 1000,
+    maxAge: config.sessionDays * 24 * 60 * 60 * 1000,
     path: "/",
   });
 }

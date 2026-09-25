@@ -40,7 +40,7 @@ const RIDER_LEVEL_CODES = Object.fromEntries(
   Object.entries(RIDER_LEVEL_LABELS).map(([code, label]) => [label, code as RiderLevel]),
 ) as Record<NonNullable<UserProfile["riderLevel"]>, RiderLevel>;
 
-export function toRiderLevelLabel(
+function toRiderLevelLabel(
   level: RiderLevel | null,
 ): UserProfile["riderLevel"] | undefined {
   return level ? RIDER_LEVEL_LABELS[level] : undefined;

@@ -16,7 +16,7 @@ import { consume } from "@server/infra/rateLimitStore";
  * client tự đặt được thì đổi header là đổi bộ đếm, tức không còn giới hạn nào.
  */
 
-export interface RateLimitOptions {
+interface RateLimitOptions {
   windowMs: number;
   max: number;
   message: string;

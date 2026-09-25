@@ -6,7 +6,7 @@ import type { AgentResult } from "./types";
  * rỉ dữ liệu cá nhân và các phát ngôn nằm ngoài phạm vi tri thức đã kiểm duyệt.
  */
 
-export type GuardrailBlock = "empty" | "insufficient" | "unsupported" | "pii_leak";
+type GuardrailBlock = "empty" | "insufficient" | "unsupported" | "pii_leak";
 
 /**
  * Phạm vi của từng phép kiểm, và vì sao chúng khác nhau.

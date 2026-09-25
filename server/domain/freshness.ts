@@ -17,9 +17,9 @@
  * chuỗi prompt.
  */
 
-export type Confidence = "verified" | "observed" | "estimated";
+type Confidence = "verified" | "observed" | "estimated";
 
-export interface Datum {
+interface Datum {
   /** Thời điểm đo hoặc khảo sát. `null` nghĩa là dữ liệu không gắn với thời điểm nào. */
   observedAt: Date | null;
   /** Thời điểm hết hiệu lực. `null` nghĩa là không hết hạn. */
@@ -29,7 +29,7 @@ export interface Datum {
   confidence: Confidence;
 }
 
-export interface Freshness {
+interface Freshness {
   stale: boolean;
   /** Nhãn ngắn cho người đọc: "số đo lúc 12:15 ngày 21/09", "khảo sát 09/09/2026". */
   label: string;

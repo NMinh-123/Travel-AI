@@ -108,7 +108,7 @@ function positive(value: unknown, max: number): number | undefined {
   return Math.round(parsed);
 }
 
-export interface NluOutcome {
+interface NluOutcome {
   result: NluResult;
   metrics: CallMetrics;
 }

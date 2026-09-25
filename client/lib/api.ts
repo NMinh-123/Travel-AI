@@ -51,7 +51,7 @@ export function errorMessage(error: unknown, fallback: string): string {
 }
 
 /** Một sự kiện đọc được từ endpoint streaming. `type` quyết định các trường còn lại. */
-export interface StreamEvent {
+interface StreamEvent {
   type: string;
   [key: string]: unknown;
 }

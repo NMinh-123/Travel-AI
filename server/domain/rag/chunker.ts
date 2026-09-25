@@ -7,7 +7,7 @@
  * FAQ, đâu là một trường của Destination. File này chỉ lo phần "theo kích thước sau".
  */
 
-export interface ChunkProfile {
+interface ChunkProfile {
   maxTokens: number;
   overlapRatio: number;
 }
@@ -55,7 +55,7 @@ export function estimateTokens(text: string): number {
  * dấu chấm của đơn vị viết liền ("800m."). Điều kiện là sau dấu kết câu phải có khoảng trắng
  * rồi tới chữ hoa hoặc chữ số.
  */
-export function splitSentences(text: string): string[] {
+function splitSentences(text: string): string[] {
   const normalized = text.replace(/\r\n/g, "\n").trim();
   if (!normalized) return [];
 

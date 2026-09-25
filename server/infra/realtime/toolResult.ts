@@ -47,7 +47,7 @@ export type ToolResult<T> =
  * đúng nhánh lỗi của `ToolResult<T>` với mọi `T`, nó gán thẳng được vào kiểu trả về của bất kỳ
  * tool nào.
  */
-export type ToolFailure = Extract<ToolResult<unknown>, { ok: false }>;
+type ToolFailure = Extract<ToolResult<unknown>, { ok: false }>;
 
 /**
  * Thu hẹp một `ToolResult` về nhánh thất bại.

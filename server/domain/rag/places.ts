@@ -26,7 +26,7 @@ import { normalizePlaceName } from "@data/places/normalize";
  */
 export { normalizePlaceName } from "@data/places/normalize";
 
-export interface ResolvedPlaces {
+interface ResolvedPlaces {
   /** Khoá Place của những tên nhận diện được. Đã khử trùng lặp, giữ thứ tự xuất hiện. */
   slugs: string[];
   /** Tên khách nhắc tới nhưng không có trong từ điển — dấu hiệu câu hỏi ngoài địa bàn. */

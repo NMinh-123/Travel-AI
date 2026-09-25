@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import type { Prisma } from "@prisma/client";
+import { config } from "@server/config";
 import { optionalUserId, requireUser, type AuthedRequest } from "@server/middleware/auth";
 import { prisma } from "@server/infra/db";
 import { AiUnavailableError, respondAiUnavailable } from "@server/infra/gemini";
@@ -36,13 +37,12 @@ export const chatRouter = Router();
 
 /** NFR-SEC-06: chống bot spam vào chatbot. Chặt hơn nhóm auth vì mỗi lượt tốn tiền gọi model. */
 const chatLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 20,
+  windowMs: config.chatRateLimitWindowMs,
+  max: config.chatRateLimitMax,
   message: "Bạn đang gửi quá nhanh",
 });
 
 const HISTORY_TURN_LIMIT = 10;
-const MAX_MESSAGE_LENGTH = 2000;
 
 /** Chỉ trả về phiên đúng chủ: phiên của khách vãng lai (userId null) ai giữ id thì đọc được, còn
  * phiên đã gắn tài khoản thì bắt buộc đúng user — biết id người khác cũng không đọc được. */
@@ -92,7 +92,7 @@ async function prepareTurn(req: Request, res: Response) {
     res.status(400).json({ error: "Tin nhắn không được để trống" });
     return null;
   }
-  const message = rawMessage.trim().slice(0, MAX_MESSAGE_LENGTH);
+  const message = rawMessage.trim().slice(0, config.chatMaxMessageLength);
 
   /**
    * Hạn mức theo GIỜ cho từng người, bên cạnh giới hạn 20 lượt/phút ở trên. Hai con số chặn hai

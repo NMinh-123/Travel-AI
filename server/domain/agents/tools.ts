@@ -18,7 +18,7 @@ import type { Slots } from "./types";
 
 const byOrder = { sortOrder: "asc" } as const;
 
-export interface DestinationFilter {
+interface DestinationFilter {
   categories?: Destination["category"][];
   district?: string;
   maxElevation?: number;
@@ -93,23 +93,23 @@ export async function findDestinationsByName(names: string[]): Promise<Destinati
   return [...matched.values()];
 }
 
-export async function getHomestays(): Promise<Homestay[]> {
+async function getHomestays(): Promise<Homestay[]> {
   return prisma.homestay.findMany({ orderBy: byOrder });
 }
 
 /** Map slot hội thoại sang tham số của máy tính chi phí, kèm giá trị mặc định đã ghi rõ. */
-export function slotsToRiderType(slots: Slots): RiderType {
+function slotsToRiderType(slots: Slots): RiderType {
   return slots.travelMode === "easy_rider" ? "easy_rider" : "self_drive";
 }
 
-export function slotsToStayStyle(slots: Slots): StayStyle {
+function slotsToStayStyle(slots: Slots): StayStyle {
   if (slots.stayStyle) return slots.stayStyle;
   if (slots.budgetLevel === "backpacker") return "dorm";
   if (slots.budgetLevel === "luxury") return "ecolodge";
   return "private_room";
 }
 
-export interface BudgetToolResult {
+interface BudgetToolResult {
   breakdown: CostBreakdown;
   /** Giá thật của homestay đang có trong hệ thống, để đối chiếu với mặt bằng ước tính. */
   homestayPrices: { name: string; location: string; pricePerNight: number }[];

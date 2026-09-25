@@ -21,7 +21,7 @@ import { prisma } from "@server/infra/db";
  * đó web và database dùng chung một đồng hồ.
  */
 
-export interface ConsumeInput {
+interface ConsumeInput {
   /** Khoá thật (chưa băm): "ip:1.2.3.4:/api/auth/login", "login:a@b.c", "ai:global"... */
   key: string;
   /** Nhóm để người vận hành đếm được mà không cần biết danh tính: "ip-path", "login-email"... */
@@ -30,7 +30,7 @@ export interface ConsumeInput {
   max: number;
 }
 
-export interface ConsumeResult {
+interface ConsumeResult {
   allowed: boolean;
   /** Số lần đã dùng trong cửa sổ hiện tại, tính cả lần này. */
   count: number;
@@ -77,7 +77,7 @@ cleanupTimer.unref?.();
  * Bản đếm trong bộ nhớ. Giữ lại vì hai việc: chạy test đơn vị (không có Postgres) và làm lưới
  * đỡ khi database không trả lời — xem `consume`.
  */
-export function consumeInMemory({ key, windowMs, max }: ConsumeInput): ConsumeResult {
+function consumeInMemory({ key, windowMs, max }: ConsumeInput): ConsumeResult {
   const hashed = hashKey(key);
   const now = Date.now();
   const bucket = buckets.get(hashed);

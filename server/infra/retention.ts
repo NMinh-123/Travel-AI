@@ -47,7 +47,7 @@ export async function pruneGuestSessions(): Promise<number> {
  * Một lượt quét. Không ném lỗi ra ngoài: một bảng quét hỏng không được làm chết vòng lặp, và
  * cũng không được làm chết những bảng còn lại — nên mỗi việc có try/catch riêng.
  */
-export async function sweepOnce(): Promise<void> {
+async function sweepOnce(): Promise<void> {
   try {
     const removed = await pruneGuestSessions();
     // Chỉ log khi có xoá thật: một dòng "đã xoá 0 phiên" mỗi ngày là tiếng ồn.

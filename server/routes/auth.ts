@@ -20,8 +20,8 @@ export const authRouter = Router();
  * Ngưỡng đặt thoáng để không cản người dùng gõ sai vài lần.
  */
 const authLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 20,
+  windowMs: config.authRateLimitWindowMs,
+  max: config.authRateLimitMax,
   message: "Bạn đã thử quá nhiều lần",
 });
 
@@ -115,8 +115,6 @@ const INVALID_CREDENTIALS = "Email hoặc mật khẩu không đúng";
  * trần đặt ở 10 — cao hơn số lần một người gõ sai mật khẩu của chính mình, thấp hơn nhiều mức
  * cần để dò trúng một mật khẩu dù yếu.
  */
-const LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
-const LOGIN_FAILURE_MAX = 10;
 
 function loginFailureKey(email: string): string {
   return `login:${email}`;
@@ -139,7 +137,7 @@ authRouter.post(
      * là một lối đốt CPU), và không tiết lộ qua thời gian phản hồi rằng email đó có tồn tại.
      */
     const failures = await peek(loginFailureKey(parsed.email));
-    if (failures.count >= LOGIN_FAILURE_MAX) {
+    if (failures.count >= config.loginFailureMax) {
       res.setHeader("Retry-After", String(failures.retryAfterSeconds));
       return res.status(429).json({
         error: "Tài khoản này vừa có quá nhiều lần đăng nhập sai",
@@ -161,8 +159,8 @@ authRouter.post(
       await consume({
         key: loginFailureKey(parsed.email),
         scope: "login-email",
-        windowMs: LOGIN_FAILURE_WINDOW_MS,
-        max: LOGIN_FAILURE_MAX,
+        windowMs: config.loginFailureWindowMs,
+        max: config.loginFailureMax,
       });
       return res.status(401).json({ error: INVALID_CREDENTIALS });
     }
@@ -183,11 +181,6 @@ authRouter.post(
  *  - Database chỉ giữ HMAC của mã với khoá là JWT_SECRET. SHA-256 trần của 6 chữ số thì bị dò
  *    ngược trong tích tắc nếu bản sao database bị lộ; có HMAC thì phải lộ cả khoá.
  */
-const PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
-const PASSWORD_RESET_MAX_ATTEMPTS = 5;
-/** Mỗi email tối đa 3 mã mỗi giờ: đủ cho người bấm gửi lại vì chưa thấy thư, không đủ để dội thư. */
-const PASSWORD_RESET_WINDOW_MS = 60 * 60 * 1000;
-const PASSWORD_RESET_MAX = 3;
 const INVALID_RESET_CODE = "Mã xác nhận không đúng hoặc đã hết hạn";
 const RESET_CODE_PATTERN = /^\d{6}$/;
 
@@ -205,7 +198,7 @@ async function sendPasswordResetCode(email: string): Promise<void> {
     where: { id: user.id },
     data: {
       passwordResetCodeHash: hashResetCode(email, code),
-      passwordResetExpiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+      passwordResetExpiresAt: new Date(Date.now() + config.passwordResetTtlMs),
       passwordResetAttempts: 0,
     },
   });
@@ -247,8 +240,8 @@ authRouter.post(
     const quota = await consume({
       key: `password-reset:${email}`,
       scope: "password-reset-email",
-      windowMs: PASSWORD_RESET_WINDOW_MS,
-      max: PASSWORD_RESET_MAX,
+      windowMs: config.passwordResetWindowMs,
+      max: config.passwordResetMax,
     });
     if (!quota.allowed) {
       res.setHeader("Retry-After", String(quota.retryAfterSeconds));
@@ -303,7 +296,7 @@ authRouter.post(
         email,
         passwordResetCodeHash: hashResetCode(email, code),
         passwordResetExpiresAt: { gt: new Date() },
-        passwordResetAttempts: { lt: PASSWORD_RESET_MAX_ATTEMPTS },
+        passwordResetAttempts: { lt: config.passwordResetMaxAttempts },
       },
       data: {
         passwordHash,

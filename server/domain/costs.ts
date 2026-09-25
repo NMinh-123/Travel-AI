@@ -28,7 +28,7 @@ export const COST_ASSUMPTIONS = {
 export type RiderType = "self_drive" | "easy_rider";
 export type StayStyle = keyof typeof COST_ASSUMPTIONS.stayPerNight;
 
-export interface CostInput {
+interface CostInput {
   days: number;
   riderType: RiderType;
   stayStyle: StayStyle;

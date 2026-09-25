@@ -6,6 +6,7 @@ import {
   consumeTurnQuota,
   respondAiBudgetExceeded,
 } from "@server/infra/aiBudget";
+import { config } from "@server/config";
 import { optionalUserId } from "@server/middleware/auth";
 import { rateLimit } from "@server/middleware/rateLimit";
 import { ItineraryGenerationError, generateItinerary } from "@server/domain/itinerary";
@@ -75,8 +76,8 @@ function parseItineraryRequest(body: any): ParseResult {
  * phút, còn mỗi lượt ở đây tốn nhiều lần một lượt chat.
  */
 const itineraryLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 5,
+  windowMs: config.itineraryRateLimitWindowMs,
+  max: config.itineraryRateLimitMax,
   message: "Bạn đang tạo lịch trình quá nhanh",
 });
 

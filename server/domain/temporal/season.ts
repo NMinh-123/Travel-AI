@@ -6,7 +6,7 @@ import type { Season } from "@data/knowledge/types";
 // Lúa: sightseeing.ts, slug kinh-nghiem-lua-chin-hoang-su-phi.
 // Tam giác mạch: sightseeing.ts, slug kinh-nghiem-tam-giac-mach-o-dau và
 // accommodation.ts (mùa hoa tháng mười, mười một).
-export const SEASON_BY_MONTH: Readonly<Record<number, readonly Season[]>> = {
+const SEASON_BY_MONTH: Readonly<Record<number, readonly Season[]>> = {
   1: ["hoa_cai", "hoa_dao_man", "mua_lanh"], // Hoa cải/đào/mận và rét.
   2: ["hoa_dao_man"],
   3: ["hoa_dao_man"],

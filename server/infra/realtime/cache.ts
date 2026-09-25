@@ -54,7 +54,7 @@ function normalize(value: unknown): unknown {
   return value;
 }
 
-export interface CachedEntry<T> {
+interface CachedEntry<T> {
   payload: T;
   source: string;
   /** Thời điểm gọi API gốc, KHÔNG phải lúc đọc cache. Adapter phải truyền lại đúng mốc này. */

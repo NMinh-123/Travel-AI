@@ -23,7 +23,7 @@ import { describeFreshness, priceDatum } from "@server/domain/freshness";
  * danh mục có `surveyedAt` và `sourceUrls`, truy được nguồn; giá của model thì không có gì cả.
  */
 
-export interface LodgingOption {
+interface LodgingOption {
   slug: string;
   name: string;
   /** Tên vùng hoặc xã chứa cơ sở, để ghép với điểm kết thúc của mỗi ngày. */
@@ -44,7 +44,7 @@ export interface LodgingOption {
 }
 
 /** Mức ngân sách của khách, cùng tập giá trị với `ItineraryRequest["budget"]`. */
-export type LodgingBudget = "backpacker" | "comfort" | "luxury";
+type LodgingBudget = "backpacker" | "comfort" | "luxury";
 
 /** "250.000đ – 800.000đ/đêm". Khoảng bằng nhau thì in một số cho gọn. */
 function priceLabel(place: Place): string {
@@ -170,7 +170,7 @@ function matchByArea(endPoint: unknown, used: Set<string>): LodgingOption | null
   return inArea.find((o) => !used.has(o.slug)) ?? inArea[0];
 }
 
-export interface LodgingEnforcement {
+interface LodgingEnforcement {
   /** Số ngày mà tên model đưa ra không có trong danh mục và đã bị thay. */
   replaced: number;
   /** Số ngày không tìm được cơ sở nào phù hợp trong danh mục. */

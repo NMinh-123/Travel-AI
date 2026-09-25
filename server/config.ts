@@ -71,9 +71,9 @@ function readBool(name: string, fallback: boolean): boolean {
   return raw === "true" || raw === "1" || raw === "yes";
 }
 
-export type EmbedderKind = "bge-m3" | "gemini";
+type EmbedderKind = "bge-m3" | "gemini";
 
-export type WeatherProvider = "open-meteo" | "google";
+type WeatherProvider = "open-meteo" | "google";
 
 /**
  * Nhà cung cấp dữ liệu thời tiết. Mặc định Open-Meteo vì nó nhận tham số `elevation` và nội suy
@@ -590,6 +590,30 @@ export const config = {
    * ở tầng hạ tầng, nhưng không phải mặc định.
    */
   guestSessionRetentionDays: readNumber("GUEST_SESSION_RETENTION_DAYS", 30, 0, 3650),
+
+  // ── Phiên đăng nhập ──────────────────────────────────────────────────────────
+  sessionDays: readNumber("SESSION_DAYS", 7, 1, 365),
+
+  // ── Giới hạn tần suất ────────────────────────────────────────────────────────
+  authRateLimitWindowMs: readNumber("AUTH_RATE_LIMIT_WINDOW_MS", 10 * 60 * 1000, 1000, 86_400_000),
+  authRateLimitMax: readNumber("AUTH_RATE_LIMIT_MAX", 20, 1, 10_000),
+  chatRateLimitWindowMs: readNumber("CHAT_RATE_LIMIT_WINDOW_MS", 60_000, 1000, 86_400_000),
+  chatRateLimitMax: readNumber("CHAT_RATE_LIMIT_MAX", 20, 1, 10_000),
+  itineraryRateLimitWindowMs: readNumber("ITINERARY_RATE_LIMIT_WINDOW_MS", 60_000, 1000, 86_400_000),
+  itineraryRateLimitMax: readNumber("ITINERARY_RATE_LIMIT_MAX", 5, 1, 10_000),
+
+  // ── Chặn dò mật khẩu ────────────────────────────────────────────────────────
+  loginFailureWindowMs: readNumber("LOGIN_FAILURE_WINDOW_MS", 15 * 60 * 1000, 1000, 86_400_000),
+  loginFailureMax: readNumber("LOGIN_FAILURE_MAX", 10, 1, 10_000),
+
+  // ── Đặt lại mật khẩu ────────────────────────────────────────────────────────
+  passwordResetTtlMs: readNumber("PASSWORD_RESET_TTL_MS", 15 * 60 * 1000, 60_000, 86_400_000),
+  passwordResetMaxAttempts: readNumber("PASSWORD_RESET_MAX_ATTEMPTS", 5, 1, 100),
+  passwordResetWindowMs: readNumber("PASSWORD_RESET_WINDOW_MS", 60 * 60 * 1000, 60_000, 86_400_000),
+  passwordResetMax: readNumber("PASSWORD_RESET_MAX", 3, 1, 100),
+
+  // ── Chat ─────────────────────────────────────────────────────────────────────
+  chatMaxMessageLength: readNumber("CHAT_MAX_MESSAGE_LENGTH", 2000, 1, 100_000),
 };
 
 export function hasGeminiCredentials(): boolean {

@@ -11,7 +11,7 @@ import { AiUnavailableError, getGeminiClient } from "@server/infra/gemini";
  */
 export const EMBEDDING_DIM = 1024;
 
-export interface Embedder {
+interface Embedder {
   readonly kind: string;
   readonly model: string;
   embed(texts: string[]): Promise<number[][]>;

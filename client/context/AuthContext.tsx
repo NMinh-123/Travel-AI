@@ -20,7 +20,7 @@ import type { DayItinerary, SavedItinerary, UserProfile } from '@shared/types';
  */
 
 /** `forgot`: nhập email để nhận mã OTP. `reset`: nhập mã trong thư cùng mật khẩu mới. */
-export type AuthModalTab = 'login' | 'register' | 'forgot' | 'reset';
+type AuthModalTab = 'login' | 'register' | 'forgot' | 'reset';
 
 interface MutationResult {
   success: boolean;

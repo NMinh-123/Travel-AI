@@ -79,7 +79,7 @@ export interface Citation {
   sourceIds: string[];
 }
 
-export interface CitationCheck {
+interface CitationCheck {
   /** Mã chứng cứ được dẫn hợp lệ, giữ thứ tự xuất hiện. */
   citedIds: string[];
   /** Mã model bịa ra, không có trong lời nhắc. */
@@ -187,7 +187,7 @@ export function parseVnNumber(raw: string): number | null {
   return null;
 }
 
-export interface NumericFact {
+interface NumericFact {
   group: string;
   /** Giá trị nhỏ nhất và lớn nhất; hai số bằng nhau khi đó là một trị đơn lẻ. */
   min: number;
@@ -253,7 +253,7 @@ function supports(fact: NumericFact, source: NumericFact): boolean {
   return fact.min >= source.min - slack && fact.max <= source.max + slack;
 }
 
-export interface FactCheck {
+interface FactCheck {
   /** Dữ kiện số không tìm được chỗ nào trong chứng cứ chống lưng. */
   unsupported: string[];
   checked: number;
@@ -352,7 +352,7 @@ function containment(needle: Set<string>, haystack: Set<string>): number {
  */
 const CLAIM_MATCH = 0.6;
 
-export interface CoverageCheck {
+interface CoverageCheck {
   /** Số câu mang thông tin trong câu trả lời — mẫu số của độ phủ. */
   claims: number;
   /** Trong đó, số câu khớp được một ý đã dẫn nguồn hợp lệ. */

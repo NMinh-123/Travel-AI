@@ -1,5 +1,5 @@
 /** Mẫu dài đứng trước để không tách "tuần sau" khỏi "cuối tuần sau". */
-export const TEMPORAL_PATTERNS: readonly string[] = [
+const TEMPORAL_PATTERNS: readonly string[] = [
   "(?:dịp\\s+)?(?:tết(?:\\s+(?:nguyên\\s+đán|âm\\s+lịch|dương\\s+lịch))?|giỗ\\s+tổ(?:\\s+hùng\\s+vương)?)",
   "dịp\\s+(?:0?2/0?9|30/0?4|0?1/0?5)",
   "cuối\\s+tuần\\s+(?:này|sau|tới)",
@@ -16,7 +16,7 @@ export const TEMPORAL_PATTERNS: readonly string[] = [
 ];
 
 /** Giữ dấu và nguyên văn; bỏ dấu sẽ làm "mốt" khớp nhầm "một người". */
-export function scanTemporalPhrases(message: string): string[] {
+function scanTemporalPhrases(message: string): string[] {
   const pattern = new RegExp(`(?<![\\p{L}\\p{N}/-])(?:${TEMPORAL_PATTERNS.join("|")})(?![\\p{L}\\p{N}/-])`, "giu");
   return [...message.matchAll(pattern)].map((match) => match[0]);
 }
