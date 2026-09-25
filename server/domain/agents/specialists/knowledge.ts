@@ -529,6 +529,7 @@ export async function runKnowledge(context: AgentContext): Promise<AgentResult> 
     temperature: 0.6,
     schema: GROUNDED_CHAT_RESPONSE_SCHEMA,
     contents: `Câu hỏi của khách: ${context.message}${formatHistory(context.history)}
+${context.slots.lastItinerary ? `\nLỊCH TRÌNH CỦA KHÁCH (đã tạo trước đó trong cuộc hội thoại này):\n${context.slots.lastItinerary}\n\nKhi khách hỏi về "Ngày X", các điểm dừng hay chỗ nghỉ, hãy tham chiếu lịch trình trên để biết họ đang nói về những địa điểm nào, rồi dùng nguồn tri thức bên dưới để tư vấn chi tiết.` : ""}
 
 NGUỒN ĐƯỢC PHÉP DÙNG (mỗi nguồn có một MÃ trong ngoặc vuông):
 

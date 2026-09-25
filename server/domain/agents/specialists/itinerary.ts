@@ -143,6 +143,18 @@ export async function runItinerary(context: AgentContext): Promise<AgentResult> 
     .filter((line) => line !== undefined)
     .join("\n");
 
+  const condensed = [
+    `${plan.title} (${plan.totalKm} km):`,
+    ...days.map((d, i) => {
+      const stops = d.waypoints.filter((w) => w.title).map((w) => w.title).join(", ");
+      const isLast = i === days.length - 1;
+      const stay = !isLast && !isPlaceholder(d.eveningStay?.name)
+        ? ` Nghỉ: ${String(d.eveningStay.name).trim()}${isPlaceholder(d.eveningStay?.priceEstimate) ? "" : ` (${String(d.eveningStay.priceEstimate).trim()})`}.`
+        : "";
+      return `Ngày ${d.day} — ${d.title}: ${d.startPoint} → ${d.endPoint} (${d.totalDistanceKm ?? "?"} km).${stops ? ` Điểm dừng: ${stops}.` : ""}${stay}`;
+    }),
+  ].join("\n");
+
   return {
     reply,
     suggestions: [
@@ -157,6 +169,6 @@ export async function runItinerary(context: AgentContext): Promise<AgentResult> 
     citedDocIds: named.map((row) => `destination:${row.slug}`),
     calls: [metrics],
     itinerary: plan,
-    slotUpdates: slots.days ? undefined : { days: 3 },
+    slotUpdates: { ...(slots.days ? {} : { days: 3 }), lastItinerary: condensed },
   };
 }

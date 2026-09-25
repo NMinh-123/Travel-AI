@@ -31,6 +31,7 @@ export function parseSlots(value: Prisma.JsonValue | null | undefined): Slots {
   }
   const temporal = parseTemporalContext(raw.temporal);
   if (temporal) slots.temporal = temporal;
+  if (typeof raw.lastItinerary === "string" && raw.lastItinerary) slots.lastItinerary = raw.lastItinerary;
   return slots;
 }
 
